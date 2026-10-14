@@ -269,3 +269,11 @@ Details: [Release v0.6.13](docs/releases/v0.6.13.md) und [CHANGELOG](CHANGELOG.m
 Die Datums- und Zeitangaben in Jobübersicht, Dashboard, Snapshot-Verwaltung, Dokumentenlisten, PDF-/Office-Eigenschaften und Protokollen folgen dem Format **`YYYY.MM.DD HH:MM:SS`** (24-Stunden-Uhr). Zeitstempel mit Zeitzoneninformation werden einheitlich in UTC angezeigt. Bei ausschliesslich kalendarischen Daten wird keine nicht vorhandene Uhrzeit erfunden.
 
 Die technische Speicherung der Daten, JSON-Maschinenformate und bestehenden Dateinamen bleibt unverändert. Weitere Einzelheiten: [Release v0.6.14](docs/releases/v0.6.14.md) und [CHANGELOG](CHANGELOG.md).
+
+## WebSnapshot v0.6.15 – Full/Partial-Snapshot auswählen
+
+Alle Auswahllisten für Snapshots nutzen nun **`Symbol - YYYY.MM.DD HH:MM:SS - ID`**. Full-Snapshots erkennst du an **📦**, Partial-Snapshots an **🧩**. Beispielsweise: `📦 - 2026.10.14 21:24:59 - 42`.
+
+Die Darstellung gilt in der Snapshot-Verwaltung, beim Vorher/Nachher-Vergleich, im Dokumentinventar sowie in der Sitemap. Auch die Auswahl der Snapshot-Art und die Typ-Spalte im Archiv verwenden die Icons. Die bereits gespeicherten Snapshots werden automatisch mit dem neuen Format beschriftet; ihre IDs und Zeitstempel werden nicht verändert.
+
+Details: [Release-Notizen v0.6.15](docs/releases/v0.6.15.md) und [CHANGELOG](CHANGELOG.md).
