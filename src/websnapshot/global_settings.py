@@ -68,14 +68,14 @@ def save(*, download_directory: str, flat_downloads: bool,
     location = validate_download_directory(download_directory)
     if type(flat_downloads) is not bool:
         raise ValueError("Ungültige Auswahl für die Ordnerstruktur.")
-    if type(visit_limit) is not int or not 10 <= visit_limit <= 20000:
-        raise ValueError("URL-Besuchslimit muss zwischen 10 und 20'000 liegen.")
+    if type(visit_limit) is not int or not 10 <= visit_limit <= 100000:
+        raise ValueError("URL-Besuchslimit muss zwischen 10 und 100'000 liegen.")
     if type(discovery_limit) is not int or not 1000 <= discovery_limit <= 1_000_000:
         raise ValueError("Discovery-Limit muss zwischen 1'000 und 1'000'000 liegen.")
     if type(page_timeout) not in (int,float) or not 1 <= page_timeout <= 60:
         raise ValueError("Seiten-Timeout muss zwischen 1 und 60 Sekunden liegen.")
-    if type(http_workers) is not int or not 1 <= http_workers <= 4:
-        raise ValueError("Parallelität muss zwischen 1 und 4 gleichzeitigen HTTP-Anfragen liegen.")
+    if type(http_workers) is not int or not 1 <= http_workers <= 10:
+        raise ValueError("Parallelität muss zwischen 1 und 10 gleichzeitigen HTTP-Anfragen liegen.")
     if sitemap_height not in VALID_HEIGHTS:
         raise ValueError("Ungültige Höhe für die Sitemap-Tabelle.")
     values = {
