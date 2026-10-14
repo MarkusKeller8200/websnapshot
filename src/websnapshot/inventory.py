@@ -14,6 +14,8 @@ import requests
 from bs4 import BeautifulSoup
 from .core import DATA, MAX_BYTES, AGENT, check_public, database, extract, normalize_url, save
 from .documents import inventory_documents
+from .versions import latest_run, effective_pages, save_partial, mark_full
+from .settings import get as get_capture
 
 
 def remove_site(site_id: int, delete_history: bool = False, data: Path = DATA) -> None:
@@ -42,7 +44,7 @@ def _fetch(session: requests.Session, url: str, max_bytes: int = MAX_BYTES) -> t
 
 
 def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
-                          data: Path = DATA, progress=None) -> tuple[int, dict]:
+                          data: Path = DATA, progress=None, snapshot_kind: str = 'full') -> tuple[int, dict]:
     """Discover sitemap and HTML links; stop at transparent safety limits.
 
     All recorded URLs belong to the same network location, redirects are not followed.
@@ -53,6 +55,8 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         if progress:
             progress(elapsed=round(monotonic()-beginning, 1), pages=len(pages),
                      documents=len(docs), visited=len(visited), discovered=len(found), **extra)
+    if snapshot_kind not in ('full','partial'):
+        raise ValueError('Ungültiger Snapshottyp')
     start = normalize_url(start)
     check_public(start)
     host = urlsplit(start).netloc
@@ -69,10 +73,14 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         robots_loaded = True
     except (requests.RequestException, ValueError, OSError):
         pass
-    queue = deque([start])
-    queued = {start}
+    parent_id = latest_run(site_id,data) if snapshot_kind == 'partial' else None
+    if snapshot_kind == 'partial' and parent_id is None:
+        raise ValueError('Für Partial-Snapshots wird ein Baseline-Snapshot benötigt')
+    baseline = effective_pages(parent_id,data) if parent_id else {}
+    queue = deque(baseline.keys()) if parent_id else deque([start])
+    queued = set(queue) if parent_id else {start}
     visited = set()
-    sitemap_queue = deque([origin + "/sitemap.xml"])
+    sitemap_queue = deque() if parent_id else deque([origin + '/sitemap.xml'])
     sitemap_seen = set()
     errors = []
     docs = set()
@@ -80,6 +88,13 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     skipped = 0
     pages = {}
     sitemap_urls = []
+    renderer = None
+    try:
+        if get_capture(site_id,data)['mode'] == 'browser':
+            from .browser import BrowserRenderer
+            renderer = BrowserRenderer(start,get_capture(site_id,data))
+    except Exception:
+        raise
     emit(phase='Sitemaps prüfen')
     if robots_loaded:
         for line in raw.decode("utf-8", "replace").splitlines():
@@ -125,6 +140,17 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
             if robots_loaded and not robot.can_fetch(AGENT, url):
                 skipped += 1
                 continue
+            if renderer and not urlsplit(url).path.lower().endswith((".pdf",".doc",".docx")):
+                title, content, links = renderer.fetch(url)
+                pages[url] = (title,content)
+                if not parent_id:
+                    for link in links:
+                        if urlsplit(link).netloc == host and link not in queued:
+                            queued.add(link)
+                            found.add(link)
+                            queue.append(link)
+                emit(phase="Browser-Erfassung")
+                continue
             body, kind = _fetch(session, url)
             if "text/html" not in kind:
                 if ("pdf" in kind or "msword" in kind or "wordprocessingml" in kind) and urlsplit(url).path.lower().endswith((".pdf", ".doc", ".docx")):
@@ -135,7 +161,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
             html = body.decode("utf-8", "replace")
             title, content, links = extract(html, url)
             pages[url] = (title, content)
-            for link in links:
+            for link in (links if not parent_id else []):
                 if urlsplit(link).netloc == host and link not in queued:
                     queued.add(link)
                     found.add(link)
@@ -146,7 +172,14 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     remaining = len(queue)
     if remaining:
         errors.append(f"Schutzlimit erreicht: {remaining} URLs noch offen")
-    run_id = save(site_id, pages, errors, data)
+    if renderer:
+        renderer.close()
+    if parent_id:
+        run_id, changed = save_partial(site_id,pages,errors,parent_id,data)
+    else:
+        run_id = save(site_id, pages, errors, data)
+        mark_full(run_id,data)
+        changed = len(pages)
     emit(phase="Dokument-Metadaten prüfen")
     inventory_documents(run_id, site_id, docs, session, data, progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen", **kw))
     with sqlite3.connect(database(data)) as db:
@@ -159,7 +192,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     emit(phase="Fertig")
     return run_id, {"discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
-                    "sitemaps":len(sitemap_seen), "errors":errors}
+                    "sitemaps":len(sitemap_seen), "changed":changed, "errors":errors}
 
 
 def storage_bytes(data: Path = DATA) -> int:
