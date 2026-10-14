@@ -13,8 +13,7 @@ def test_site_modes(tmp_path):
     set_settings(1,"browser","#main",2500,tmp_path)
     assert get(1,tmp_path) == {
         "mode":"browser","wait_selector":"#main","wait_ms":2500}
-    with pytest.raises(ValueError, match="0.6.0"):
-        require_available(1,tmp_path)
+    require_available(1,tmp_path)
     set_settings(1,"static","",1500,tmp_path)
     require_available(1,tmp_path)
 
