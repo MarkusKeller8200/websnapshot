@@ -237,3 +237,13 @@ Das bisher feste Links-pro-Seite-Limit von 300 ist neu global einstellbar (Stand
 Die linke Navigation lässt sich zu einer schmalen Icon-Leiste verkleinern. Die Menüpunkte bleiben anklickbar, während der Hauptinhalt mehr Platz erhält. Im **ausgeklappten Menü** werden keine Navigations-Tooltips eingeblendet, im **kompakten Modus** erscheinen sie **rechts neben dem jeweiligen Symbol**. Die Webseiten-Auswahl befindet sich wieder als Dropdown unter **Übersicht**; in der Icon-Leiste ist sie über das 🌐-Symbol verfügbar.
 
 Weitere Informationen: [Release-Notizen v0.6.10](docs/releases/v0.6.10.md) und [CHANGELOG](CHANGELOG.md).
+
+## WebSnapshot v0.6.11 – Pfade ausschliessen
+
+Unter **Websites verwalten** kannst du nun pro Website eine **mehrzeilige Crawl-Ausschlussliste** anlegen. Beispielsweise sperrt /schule-hinterbirch/aktuelles/agenda/p-2002 genau diese Seite und alle darunterliegenden Seiten, nicht aber /schule-hinterbirch/aktuelles/agenda/p-20020.
+
+Ausschlüsse werden bereits beim Einlesen der XML-Sitemap und beim Verarbeiten der HTML-Links berücksichtigt, bevor sie ein Besuchs-, Discovery- oder Links-pro-Seite-Limit beanspruchen. Die Anzahl ausgelassener URL-Kandidaten erscheint live und im Snapshot-Archiv zusammen mit Trefferzahlen und Beispielen je Pfadregel.
+
+Nach einer Änderung der Ausschlussliste wird vor einem weiteren Delta-Snapshot ein neuer Full-Snapshot benötigt, damit ausgeschlossenes Material nicht aus früheren Snapshots geerbt wird.
+
+Details: [Release v0.6.11](docs/releases/v0.6.11.md) und [CHANGELOG](CHANGELOG.md).
