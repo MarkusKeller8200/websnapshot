@@ -521,13 +521,14 @@ if current_page == "Snapshot-Verwaltung":
                 st.write("Bearbeitungsstatus",diag["statuses"])
                 st.write("Ausschlussgründe",diag["reasons"])
                 a,b=st.columns(2)
-                a.dataframe([{"Pfad":path,"Varianten":count} for path,count in diag["paths"]],
-                            hide_index=True,width="stretch",
-                            column_config={"Pfad":st.column_config.Column(width=380)})
-                b.dataframe([{"Parameter":name,"Vorkommen":count}
-                              for name,count in diag["parameters"]],
-                            hide_index=True,width="stretch",
-                            column_config={"Parameter":st.column_config.Column(width=290)})
+                path_rows=[{"Pfad":path,"Varianten":count}
+                           for path,count in diag["paths"]]
+                parameter_rows=[{"Parameter":name,"Vorkommen":count}
+                                for name,count in diag["parameters"]]
+                a.dataframe(path_rows,hide_index=True,width="stretch",
+                            column_config=streamlit_columns(path_rows))
+                b.dataframe(parameter_rows,hide_index=True,width="stretch",
+                            column_config=streamlit_columns(parameter_rows))
             with st.expander("🗑️ Snapshot löschen"):
                 st.warning("Die Löschung ist endgültig. Full-Snapshots mit abhängigen "
                            "Delta-Snapshots können nicht gelöscht werden.")
