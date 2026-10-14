@@ -25,6 +25,66 @@ st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte ·
 tab_overview, tab_sites, tab_snapshots, tab_map, tab_system = st.tabs(
     ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Sitemap", "Updates"])
 
+
+@st.fragment(run_every="2s")
+def job_controls(site_id, url, limit, snap_kind):
+    from datetime import timezone
+    job = latest(site_id)
+    active = bool(job and job["state"] in ("queued","running"))
+    if job:
+        info = json.loads(job["progress"] or "{}")
+        start_time = datetime.fromisoformat(job["started_at"])
+        end_time = datetime.fromisoformat(job["ended_at"]) if job["ended_at"] else datetime.now(timezone.utc)
+        elapsed = max(0,int((end_time-start_time).total_seconds()))
+        st.write(f"**Job #{job['id']} · {job['state']}**")
+        col = st.columns(4)
+        col[0].metric("Gestartet (UTC)",start_time.strftime("%d.%m. %H:%M"))
+        col[1].metric("Laufzeit",f"{elapsed//60:02d}:{elapsed%60:02d}")
+        col[2].metric("Seiten",info.get("pages",0))
+        col[3].metric("Dokumente",info.get("documents",0))
+        if info.get("snapshot_kind")=="partial":
+            percent = float(info.get("percent",0) or 0)
+            st.progress(min(1.0,max(0.0,percent/100)),text=f"{percent:.1f}% der bekannten URLs geprüft")
+            st.metric("Textänderungen zum Vorgänger",info.get("changed",0))
+            st.caption(f"Vergleich mit Snapshot #{info.get('baseline_id','?')} inklusive geerbter Inhalte")
+        else:
+            st.caption(f"{info.get('discovered',0)} URLs entdeckt · {info.get('visited',0)} besucht · Phase: {info.get('phase','Wartet')}")
+        if active:
+            st.info("Für diese Website läuft bereits ein Job.")
+        elif job["state"] in ("failed","interrupted"):
+            st.error(job["message"])
+        else:
+            st.success(job["message"])
+    if st.button("Neuen Snapshot im Hintergrund starten",type="primary",
+                 key=f"start_{site_id}",disabled=active or (snap_kind=="partial" and not runs(site_id))):
+        try:
+            started, job_id = launch(site_id,url,limit,snapshot_kind=snap_kind)
+            st.success(f"Job #{job_id} gestartet." if started else f"Job #{job_id} läuft bereits.")
+        except ValueError as exc:
+            st.error(str(exc))
+        st.rerun()
+
+@st.fragment(run_every="2s")
+def running_dashboard():
+    from datetime import timezone
+    found=0
+    for entry in dashboard():
+        job=latest(entry["id"])
+        if not job or job["state"] not in ("queued","running"):
+            continue
+        found+=1
+        info=json.loads(job["progress"] or "{}")
+        start_time=datetime.fromisoformat(job["started_at"])
+        elapsed=max(0,int((datetime.now(timezone.utc)-start_time).total_seconds()))
+        st.write(f"**{entry['url']}** · Job #{job['id']} · gestartet {start_time.strftime('%d.%m. %H:%M')} UTC · Laufzeit {elapsed//60:02d}:{elapsed%60:02d}")
+        if info.get("snapshot_kind")=="partial":
+            percent=float(info.get("percent",0) or 0)
+            st.progress(min(1,max(0,percent/100)),text=f"Partial: {percent:.1f}% · {info.get('changed',0)} Änderungen zum Vorgänger")
+        else:
+            st.caption(f"Full: {info.get('pages',0)} Seiten · {info.get('documents',0)} Dokumente · {info.get('discovered',0)} URLs gefunden")
+    if not found:
+        st.caption("Keine aktiven Jobs.")
+
 with tab_overview:
     overview = dashboard()
     if overview:
@@ -41,6 +101,8 @@ with tab_overview:
             col.metric(label, value)
         st.caption("Dokumente werden als Links gezählt, noch nicht heruntergeladen. "
                    "Speicher umfasst lokale Datenbankdateien; pro Website wird die Textmenge geschätzt.")
+        st.subheader('Aktive Snapshot-Jobs')
+        running_dashboard()
         for entry in overview:
             age = entry["oldest_age"]
             marker = "🔴" if age is not None and age > 30 else "🟢" if age is not None else "⚪"
@@ -120,41 +182,7 @@ with tab_snapshots:
         st.caption("Automatische Sitemaps und rekursive Linksuche ohne feste Linktiefe. "
                    "Das Schutzlimit verhindert endlose Crawls. robots.txt wird berücksichtigt.")
         snap_kind = st.radio("Snapshot-Art",["full","partial"],format_func=lambda x: "Full / Baseline" if x=="full" else "Partial / Delta",horizontal=True)
-        @st.fragment(run_every="2s")
-        def show_job():
-            job = latest(site_id)
-            if job:
-                from datetime import timezone
-                details = json.loads(job["progress"])
-                began = datetime.fromisoformat(job["started_at"])
-                until = datetime.fromisoformat(job["ended_at"]) if job["ended_at"] else datetime.now(timezone.utc)
-                duration = max(0, int((until-began).total_seconds()))
-                st.write(f"**Job #{job['id']} – {job['state']}**")
-                cols = st.columns(4)
-                for col,label,value in zip(cols,["Laufzeit", "Seiten", "Dokumente", "URLs entdeckt"],
-                    [f"{duration} s",details.get("pages","—"),details.get("documents","—"),
-                     details.get("discovered","—")]):
-                    col.metric(label,value)
-                if job["state"] in ("queued","running"):
-                    st.info("Snapshot läuft im Hintergrund. Du kannst weiterarbeiten.")
-                elif job["state"] in ("failed","interrupted"):
-                    st.error(job["message"])
-                else:
-                    st.success(job["message"])
-            return job
-        current_job = show_job()
-        if st.button("Neuen Snapshot im Hintergrund starten", type="primary",
-                     disabled=(bool(current_job and current_job["state"] in ("queued","running")) or (snap_kind=="partial" and not runs(site_id)))):
-            try:
-                started, job_id = launch(site_id,options[site_id],int(limit),snapshot_kind=snap_kind)
-            except ValueError as exc:
-                st.error(str(exc))
-                st.stop()
-            if started:
-                st.success(f"Job #{job_id} gestartet.")
-            else:
-                st.warning(f"Für diese Website läuft Job #{job_id} bereits.")
-            st.rerun()
+        job_controls(site_id,options[site_id],int(limit),snap_kind)
         history = runs(site_id)
         st.subheader("Snapshot-Verlauf")
         st.dataframe([{"ID":r[0],"Typ":kind(r[0])[0],"Zeitpunkt (UTC)":r[1],"Status":r[2],
