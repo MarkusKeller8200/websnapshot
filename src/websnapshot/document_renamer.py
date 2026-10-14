@@ -93,6 +93,11 @@ def filename_from_headers(url: str, content_disposition: str | None = None) -> s
 
 def resolve_extension(source: str, content_type: str) -> str:
     kind=content_type.lower()
+    ext=Path(source).suffix.lower()
+    # CSV is commonly served as text/plain; keep the correct filename.
+    if ext in EXTS and ("text/plain" in kind or
+                        "application/octet-stream" in kind):
+        return ext
     if "application/pdf" in kind: return ".pdf"
     if "wordprocessingml.document" in kind: return ".docx"
     if "application/msword" in kind: return ".doc"
