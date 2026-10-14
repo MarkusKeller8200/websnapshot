@@ -185,3 +185,9 @@ Die neueste 0.6.x-Fassung enthält einen Schutz gegen URL-Explosionen (normalisi
 ### Dokumente auf zugehörigen Subdomains
 
 Ein von `www.datenschutz.ch` verlinktes PDF auf `docs.datenschutz.ch` wird auch dann inventarisiert, wenn der HTML-Crawler aus Sicherheitsgründen auf `www.datenschutz.ch` beschränkt bleibt. Derzeit werden direkte PDF-, DOC- und DOCX-Links auf der ausdrücklich zugehörigen Subdomain `docs.<Domain>` erfasst; fremde Domains bleiben ausgeschlossen. Dokumentdateien werden beim Snapshot nicht heruntergeladen. Ein separater, ausdrücklich ausgelöster Download ist weiterhin erforderlich. Dies ist keine generelle automatische Erkennung beliebiger CDN-Hosts.
+
+## Websnapshot v0.6.4 – Seitenleiste und Dokumentfilter
+
+Die Website-Auswahl erfolgt zentral in einer ein- und ausblendbaren linken Seitenleiste (🌐) mit Suchfeld. Snapshot-Zentrale, Sitemap und Website-Einstellungen übernehmen die gewählte Website automatisch. Im Dokumentinventar stehen eine Suche nach Dateiname, URL und Status, Checkboxen direkt in der Liste und Aktionen zum Auswählen/Abwählen aller beziehungsweise ausschliesslich der gefilterten Dokumente bereit. Auch bei Filterwechseln bleibt die Auswahl von nicht sichtbaren Dokumenten bestehen.
+
+**Versionsgeschichte:** [CHANGELOG.md](CHANGELOG.md) · [GitHub Releases](https://github.com/MarkusKeller8200/websnapshot/releases) · [Hinweise zu v0.6.4](docs/releases/v0.6.4.md). Releases werden durch einen GitHub-Actions-Workflow nach Testprüfung veröffentlicht. Wenn der Workflow nicht erfolgreich war, ist die Veröffentlichung noch nicht abgeschlossen.
