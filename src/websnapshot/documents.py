@@ -11,7 +11,7 @@ from .core import DATA, AGENT, check_public, database, normalize_url
 from .document_metadata import info_by_url, store_properties
 from .document_properties import extract_properties
 
-EXTS = (".pdf", ".doc", ".docx")
+EXTS = (".pdf", ".doc", ".docx", ".xlsx", ".xls", ".txt", ".csv")
 MAX_DOWNLOAD = 100 * 1024 * 1024
 
 
@@ -242,6 +242,13 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
                         target.unlink(missing_ok=True)
                         raise
             current_hash=digest.hexdigest()
+            from .document_properties import extract_properties
+            from .document_metadata import store_properties
+            try:
+                props=extract_properties(target,extension)
+                store_properties(run_id,url,props,current_hash,data=data)
+            except ValueError:
+                pass
             store_properties(run_id,url,document_props,current_hash,data=data)
             prior_hash=previous_hashes.get(url)
             content_status=("Neu" if prior_hash is None else
