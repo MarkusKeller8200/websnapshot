@@ -253,3 +253,13 @@ Details: [Release v0.6.11](docs/releases/v0.6.11.md) und [CHANGELOG](CHANGELOG.m
 Die Website-Verwaltung bietet einen **eigenen Speicherbutton direkt unter der Crawl-Ausschlussliste**. Die Liste wird unabhängig von Browser-Einstellungen gespeichert und aus SQLite zurückgelesen, bevor die Anwendung Erfolg meldet. Direkt unter dem Eingabefeld siehst du die Zahl der **tatsächlich gespeicherten Pfade** und kannst die Einträge zur Kontrolle aufklappen. Eine Warnung signalisiert ungespeicherte Änderungen.
 
 Der allgemeine Button «Erfassungseinstellungen speichern» bestätigt gespeicherte Änderungen ebenfalls sichtbar. [Release v0.6.12](docs/releases/v0.6.12.md) · [CHANGELOG](CHANGELOG.md)
+
+## WebSnapshot v0.6.13 – Erfassungsflut analysieren
+
+Bei umfangreichen Websites können einzelne Pfade viele Query-Varianten erzeugen. Zusätzlich lieferte die XML-Sitemap zuvor eine eigene grosse URL-Zwischenliste. WebSnapshot **prüft robots.txt jetzt bereits vor dem Einreihen** und übernimmt Sitemap-Einträge unmittelbar nach der Filterung.
+
+Unter **Snapshot starten** erscheinen live die Anzahl eindeutiger Pfade, URLs mit Query-Parametern und robots-gesperrter Kandidaten. Unter **Snapshot-Verwaltung → Crawl-Diagnose** sind für neue Snapshots zusätzlich die häufigsten Parameter, variantenreichsten Pfade und URL-Entdeckungsquellen sichtbar.
+
+Pfad-Ausschlüsse bleiben präzise: `/schule-hinterbirch/aktuelles/agenda/p-2002` sperrt nur diesen Pfad, `/schule-hinterbirch/aktuelles/agenda` würde dagegen den ganzen entsprechenden Agenda-Bereich ausschliessen. Ein bereits laufender Job übernimmt nachträglich gespeicherte Änderungen nicht.
+
+Details: [Release v0.6.13](docs/releases/v0.6.13.md) und [CHANGELOG](CHANGELOG.md).
