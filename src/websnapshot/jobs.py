@@ -133,6 +133,10 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
                  f"{result['pages']} Seiten, {result['documents']} Dokumente",
                  json.dumps(final,ensure_ascii=False),job_id))
             db.commit()
+        if result.get("exclude_paths"):
+            log_write(job_id,"INFO",
+                f"Benutzerdefinierte Pfadregeln: {len(result['exclude_paths'])}; "
+                f"ausgelassene URL-Kandidaten: {result.get('path_excluded',0)}",data)
         for issue in result.get("errors",[]):
             log_write(job_id,"WARNING",issue,data)
         log_write(job_id,"INFO",f"Abgeschlossen: Snapshot #{run_id}, {result['pages']} Seiten, {result['documents']} Dokumente",data)
