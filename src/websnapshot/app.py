@@ -130,6 +130,54 @@ if "ws_compact_nav" not in st.session_state:
     st.session_state["ws_compact_nav"] = False
 compact_nav=bool(st.session_state["ws_compact_nav"])
 if compact_nav:
+    # Position hover labels alongside the buttons, never above them.
+    # Streamlit assigns stable st-key-* classes to keyed containers.
+    nav_tooltip_rules=[]
+    nav_index=0
+    for _, entries in NAV:
+        for _, label in entries:
+            name=label.split(" ",1)[1]
+            tooltip=json.dumps(name,ensure_ascii=False)
+            selector=f".st-key-ws_nav_item_{nav_index}"
+            nav_tooltip_rules.append(
+                f"{selector}:hover::after,{selector}:focus-within::after"
+                "{content:"+tooltip+";}")
+            nav_index+=1
+    st.markdown("""<style>
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+        overflow: visible !important;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-ws_nav_item_"] {
+        position: relative !important;
+        overflow: visible !important;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-ws_nav_item_"]::after {
+        display: none;
+        position: absolute;
+        left: calc(100% + 8px);
+        top: 50%;
+        transform: translateY(-50%);
+        padding: .38rem .7rem;
+        font-size: .82rem;
+        font-weight: 500;
+        color: #f8fafc;
+        background: #172333;
+        border-radius: .35rem;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 9999;
+        box-shadow: 0 3px 12px rgba(0,0,0,.22);
+    }
+    """ + "\n".join(nav_tooltip_rules) +
+    """
+    section[data-testid="stSidebar"] [class*="st-key-ws_nav_item_"]:hover::after,
+    section[data-testid="stSidebar"] [class*="st-key-ws_nav_item_"]:focus-within::after {
+        display: block;
+    }
+    </style>""",unsafe_allow_html=True)
+if compact_nav:
     st.markdown("""<style>
     section[data-testid="stSidebar"] {
         width: 4.7rem !important;
@@ -153,11 +201,12 @@ if compact_nav:
 with st.sidebar:
     if st.button("▶" if compact_nav else "◀ Menü einklappen",
                  key="ws_nav_toggle",use_container_width=True,
-                 help="Menü ausklappen" if compact_nav else "Menü auf Symbole reduzieren"):
+                 help="Menü ausklappen" if compact_nav else None):
         st.session_state["ws_compact_nav"]=not compact_nav
         st.rerun()
     if not compact_nav:
         st.markdown("### 🧭 Navigation")
+    nav_item_index=0
     for group,entries in NAV:
         if compact_nav:
             st.divider()
@@ -165,12 +214,14 @@ with st.sidebar:
             st.caption(group)
         for page,label in entries:
             icon=label.split(" ",1)[0]
-            if st.button(icon if compact_nav else label,
-                         key="page_"+page,help=label if compact_nav else None,
-                         type="primary" if page==current_page else "secondary",
-                         use_container_width=True):
-                st.session_state["ws_page"]=page
-                st.rerun()
+            with st.container(key=f"ws_nav_item_{nav_item_index}"):
+                if st.button(icon if compact_nav else label,
+                             key="page_"+page,
+                             type="primary" if page==current_page else "secondary",
+                             use_container_width=True):
+                    st.session_state["ws_page"]=page
+                    st.rerun()
+            nav_item_index+=1
         if group=="ÜBERSICHT":
             if site_options:
                 def site_label(sid):
