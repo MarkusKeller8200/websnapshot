@@ -2,6 +2,18 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.8 – Unterseiten gezielt crawlen (14.10.2026)
+- Automatische Begrenzung auf die Startseite und ihre Unterpfade bei Unterseiten-URLs; die Root-Domain bleibt standardmässig domainweit.
+- Neue websitebezogene Einstellung **«Erfassungsbereich»** mit Automatik, Unterbereich und gesamter Domain.
+- Unterstützung von Einstiegsseiten mit `.html`-Endung, beispielsweise `/de/bildung.html` einschliesslich `/de/bildung/...`.
+- Domainweite Sitemap-Einträge sowie HTML-/Browserlinks ausserhalb des Bereichs aussortieren, bevor sie in die Crawl-Warteschlange gelangen.
+- Direkt von erlaubten Seiten verlinkte PDF- und Word-Dateien aus gemeinsamen Dokumentverzeichnissen weiterhin inventarisieren.
+- Anzahl wegen der Bereichsgrenze übersprungener URLs im Jobverlauf anzeigen und archivieren.
+- Full-Snapshot verpflichtend beim Wechsel von domainweiter Baseline auf einen Unterbereich.
+- Regressionstests für Präfixgrenzen, HTML-Unterseiten, Dokumentlinks, Altbestand und Migration.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.8.md)
+
 ## v0.6.7 – 10 Worker, grosse Crawls und Sitemap-Baum (14.10.2026)
 - Parallelität im statischen Crawler auf **1–10 HTTP-Worker** einstellbar (Standard weiterhin 3).
 - Besuchslimit auf maximal **100'000 URLs** erhöht; Discovery-Limit erlaubt weiterhin bis zu **1'000'000 URLs**. Standardwerte bleiben bei 2'000 / 200'000.
