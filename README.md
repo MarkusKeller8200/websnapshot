@@ -203,3 +203,11 @@ Unter «Einstellungen» lassen sich das globale Download-Verzeichnis (absoluter 
 **Versionsgeschichte:** [CHANGELOG](CHANGELOG.md) · [Release-Notizen v0.6.5](docs/releases/v0.6.5.md) · [alle GitHub Releases](https://github.com/MarkusKeller8200/websnapshot/releases).
 
 **Hinweis:** Ältere Abschnitte dieses README beschreiben den historischen Entwicklungsstand und können abweichende Menübezeichnungen oder frühere Download-Namensregeln enthalten. Massgeblich für die aktuelle Version sind die v0.6.5-Release-Notizen. Die optische Darstellung muss noch auf dem lokalen Windows-System überprüft werden.
+
+## WebSnapshot v0.6.6 – Konfigurierbare Crawl-Performance
+
+Die neuen Standardwerte sind **200'000 entdeckte URLs**, **2'000 besuchte Seiten**, **3 Sekunden Timeout** und **3 parallele statische HTTP-Aufrufe**. Einstellbar unter «Einstellungen → Crawl-Grenzen und Geschwindigkeit». Gespeicherte frühere Einstellungen werden nicht stillschweigend überschrieben.
+
+WebSnapshot misst beim Crawlen die Zeiten von robots.txt, Sitemaps, Link-Discovery, Seitenabrufen und Datenbankspeicherung. Live und im Snapshot-Archiv erscheinen Anzahl, Minimum, Mittelwert, Maximum und Summe der Messungen in Millisekunden sowie die langsamste URL pro Phase. Für Browserseiten wird zusätzlich heuristisch zwischen serverseitig vorhandenem Inhalt und durch JavaScript nachgeladenen Inhalten unterschieden; dies ist keine exakte Klassifikation.
+
+Statische Seiten werden mit bis zu vier HTTP-Workern gleichzeitig abgerufen. Browserseiten bleiben sequentiell. Der HTTP-Timeout bezeichnet eine Wartezeit ohne Datenempfang und ist **keine harte Grenze für die gesamte Seitendauer**. Grosse Discovery-Limits erhöhen Datenbank- und Speicherbedarf. Weitere Details: [Release v0.6.6](docs/releases/v0.6.6.md) und [CHANGELOG](CHANGELOG.md).
