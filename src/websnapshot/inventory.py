@@ -17,6 +17,7 @@ from .documents import inventory_documents
 from .versions import latest_run, effective_pages, save_partial, mark_full, kind
 from .settings import get as get_capture
 from hashlib import sha256
+from .diagnostics import canonical, path_key, MAX_DISCOVERED, MAX_PER_PATH, MAX_PER_PAGE, record, record_quality, duplicate_groups
 
 
 def remove_site(site_id: int, delete_history: bool = False, data: Path = DATA) -> None:
@@ -101,6 +102,34 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     errors = []
     docs = set()
     found = set(queued)
+    url_records = {u: ('baseline' if parent_id else 'start','queued','') for u in queued}
+    path_counts = {}
+    for u in queued:
+        key=path_key(u)
+        path_counts[key]=path_counts.get(key,0)+1
+    truncated=False
+    def enqueue(link, source):
+        nonlocal truncated, skipped
+        try:
+            link=canonical(link)
+            if urlsplit(link).netloc!=host or link in queued:
+                return
+            if len(queued)>=MAX_DISCOVERED:
+                truncated=True
+                skipped+=1
+                return
+            key=path_key(link)
+            if path_counts.get(key,0)>=MAX_PER_PATH:
+                skipped+=1
+                truncated=True
+                return
+            queued.add(link)
+            found.add(link)
+            path_counts[key]=path_counts.get(key,0)+1
+            url_records[link]=(source,'queued','')
+            queue.append(link)
+        except (ValueError,TypeError):
+            skipped+=1
     skipped = 0
     pages = {}
     sitemap_urls = []
@@ -116,7 +145,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         for line in raw.decode("utf-8", "replace").splitlines():
             if line.lower().startswith("sitemap:"):
                 sitemap_queue.append(line.split(":", 1)[1].strip())
-    while sitemap_queue and len(sitemap_seen) < 25 and len(found) < 50000:
+    while sitemap_queue and len(sitemap_seen) < 25 and len(found) < MAX_DISCOVERED:
         sm = sitemap_queue.popleft()
         try:
             sm = normalize_url(sm)
@@ -139,23 +168,23 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         except (requests.RequestException, ValueError, ET.ParseError, OSError):
             errors.append("Sitemap nicht lesbar: " + sm)
     for link in sitemap_urls:
-        if link not in queued:
-            queued.add(link)
-            queue.append(link)
-            found.add(link)
+        enqueue(link,'sitemap')
     emit(phase='Seiten durchsuchen')
     while queue and len(visited) < limit:
         url = queue.popleft()
         if url in visited:
             continue
         visited.add(url)
+        url_records[url]=(url_records.get(url,('link','',''))[0],'visited','')
         if urlsplit(url).path.lower().endswith((".pdf", ".docx", ".doc")):
             docs.add(url)
+            url_records[url]=(url_records[url][0],'document','')
             emit(phase="Dokument gefunden")
             continue
         try:
             if robots_loaded and not robot.can_fetch(AGENT, url):
                 skipped += 1
+                url_records[url]=(url_records[url][0],'excluded','robots.txt')
                 continue
             if renderer and not urlsplit(url).path.lower().endswith((".pdf",".doc",".docx")):
                 try:
@@ -163,35 +192,40 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 except Exception as exc:
                     raise ValueError(f"Browser konnte Seite nicht erfassen: {exc}") from exc
                 pages[url] = (title,content)
+                url_records[url]=(url_records[url][0],'archived','')
                 if not parent_id:
-                    for link in links:
-                        if urlsplit(link).netloc == host and link not in queued:
-                            queued.add(link)
-                            found.add(link)
-                            queue.append(link)
+                    for link in links[:MAX_PER_PAGE]:
+                        enqueue(link,'browser-link')
+                    if len(links)>MAX_PER_PAGE:
+                        truncated=True
                 emit(phase="Browser-Erfassung")
                 continue
             body, kind = _fetch(session, url)
             if "text/html" not in kind:
                 if ("pdf" in kind or "msword" in kind or "wordprocessingml" in kind) and urlsplit(url).path.lower().endswith((".pdf", ".doc", ".docx")):
                     docs.add(url)
+                    url_records[url]=(url_records[url][0],"document","")
                 else:
                     skipped += 1
+                    url_records[url]=(url_records[url][0],"excluded","not-html")
                 continue
             html = body.decode("utf-8", "replace")
             title, content, links = extract(html, url)
             pages[url] = (title, content)
-            for link in (links if not parent_id else []):
-                if urlsplit(link).netloc == host and link not in queued:
-                    queued.add(link)
-                    found.add(link)
-                    queue.append(link)
+            url_records[url]=(url_records[url][0],"archived","")
+            for link in (links[:MAX_PER_PAGE] if not parent_id else []):
+                enqueue(link,"html-link")
+            if not parent_id and len(links)>MAX_PER_PAGE:
+                truncated=True
         except (requests.RequestException, ValueError, OSError) as exc:
             errors.append(f"{url}: {exc}")
+            url_records[url]=(url_records[url][0],"failed",str(exc)[:120])
         emit(phase="Seiten durchsuchen")
     remaining = len(queue)
     if remaining:
         errors.append(f"Schutzlimit erreicht: {remaining} URLs noch offen")
+    if truncated:
+        errors.append("Discovery-Schutzlimit erreicht: weitere URL-Varianten ausgeschlossen")
     if renderer:
         renderer.close()
     if parent_id:
@@ -209,6 +243,11 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         db.execute("INSERT INTO inventory VALUES (?,?,?,?,?,?,?)",
                    (run_id, len(found), len(docs), len(visited), skipped,
                     remaining, len(sitemap_seen)))
+    record(run_id,url_records,data)
+    record_quality(run_id,dict(discovered=len(found),visited=len(visited),archived=len(pages),
+        documents=len(docs),pending=remaining,skipped=skipped,errors=len(errors),
+        duplicate_content=duplicate_groups(pages),truncated=int(truncated or remaining>0),
+        warning="Unvollständig" if truncated or remaining or errors else "Abgeschlossen (bekannte URLs)"),data)
     emit(phase="Fertig", changed=changed, percent=100 if parent_id and remaining == 0 else round(100*len(visited)/max(len(baseline),1),1) if parent_id else None)
     return run_id, {"snapshot_kind":snapshot_kind, "full_baseline_id":full_id,
                     "changed_since_full":sum(1 for u,(_,content) in pages.items() if u not in full_baseline or sha256(content.encode()).hexdigest()!=full_baseline[u][2]) if parent_id else 0,
