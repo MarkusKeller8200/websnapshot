@@ -75,3 +75,37 @@ def test_browser_heuristic_counts(tmp_path,monkeypatch):
     assert result["static_pages"]==0
     assert result["browser_dynamic_pages"]==1
     assert get_performance(run_id,tmp_path)["browser_dynamic_pages"]==1
+
+
+def test_static_page_requests_really_run_in_parallel(tmp_path,monkeypatch):
+    from threading import Lock
+    from time import sleep
+    from websnapshot import inventory
+    with sqlite3.connect(database(tmp_path)) as db:
+        db.execute("INSERT INTO sites(id,url,created_at) VALUES (1,'https://example.org/','now')")
+    monkeypatch.setattr(inventory,"check_public",lambda _url:None)
+    lock=Lock()
+    active=0
+    peak=0
+    def fake_fetch(session,url,max_bytes=2_000_000,timeout=3.0):
+        nonlocal active,peak
+        if url.endswith("robots.txt"):
+            return b"","text/plain"
+        if url.endswith("sitemap.xml"):
+            return b"<urlset><url><loc>https://example.org/page2</loc></url></urlset>","application/xml"
+        with lock:
+            active+=1
+            peak=max(peak,active)
+        try:
+            sleep(0.045)
+            return b"<html><body>Hello</body></html>","text/html"
+        finally:
+            with lock:
+                active-=1
+    monkeypatch.setattr(inventory,"_fetch",fake_fetch)
+    run,result=discover_and_snapshot(1,"https://example.org/",limit=2,
+        data=tmp_path,
+        config={"discovery_limit":1000,"page_timeout":3.0,"http_workers":2})
+    assert result["static_pages"]==2
+    assert peak==2
+    assert get_performance(run,tmp_path)["timings"]["page_fetch"]["count"]==2
