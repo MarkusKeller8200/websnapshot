@@ -22,7 +22,7 @@ CASE_MODES = {
     "upper": "GANZER NAME GROSS",
 }
 INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
-EXTS = (".pdf", ".doc", ".docx")
+EXTS = (".pdf", ".doc", ".docx", ".xlsx", ".xls", ".txt", ".csv")
 RESERVED = {"CON","PRN","AUX","NUL"} | {f"COM{i}" for i in range(1,10)} | {f"LPT{i}" for i in range(1,10)}
 
 
@@ -96,10 +96,14 @@ def resolve_extension(source: str, content_type: str) -> str:
     if "application/pdf" in kind: return ".pdf"
     if "wordprocessingml.document" in kind: return ".docx"
     if "application/msword" in kind: return ".doc"
+    if "spreadsheetml.sheet" in kind: return ".xlsx"
+    if "application/vnd.ms-excel" in kind: return ".xls"
+    if "text/csv" in kind or "application/csv" in kind: return ".csv"
+    if "text/plain" in kind: return ".txt"
     ext=Path(source).suffix.lower()
     if ext in EXTS:
         return ext
-    raise ValueError("Unbekannter PDF-/Word-Dateityp")
+    raise ValueError("Unbekannter Dokumenttyp")
 
 
 def build_filename(source_name: str, extension: str, *,
@@ -109,7 +113,7 @@ def build_filename(source_name: str, extension: str, *,
         raise ValueError("Ungültiger Dateinamensmodus")
     ext=extension.lower()
     if ext not in EXTS:
-        raise ValueError("Nur PDF- und Word-Dateien erlaubt")
+        raise ValueError("Nur PDF, Word, Excel, TXT und CSV erlaubt")
     stem=source_name.rsplit(".",1)[0] if Path(source_name).suffix.lower() in EXTS else source_name
     stem=clean_stem(stem)
     if mode==ORIGINAL:
@@ -191,7 +195,7 @@ def file_metadata_dates(path: Path, extension: str) -> list[tuple[str, datetime]
                         output.append((label,parsed))
         except Exception:
             return output
-    elif extension==".docx":
+    elif extension in (".docx",".xlsx"):
         try:
             from zipfile import ZipFile
             from xml.etree import ElementTree as ET
