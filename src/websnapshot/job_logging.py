@@ -31,6 +31,6 @@ def read(job_id: int, data: Path = DATA) -> str:
     output=content.decode("utf-8", "replace")
     # Older log files remain untouched; normalise their visible ISO stamps.
     output=re.sub(
-        r"(?m)^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:[+-]\\d{2}:\\d{2}|Z))(?= \\[)",
+        r"(?m)^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))(?= \[)",
         lambda match:format_datetime(match.group(1)),output)
-    return ("[Nur die letzten 500 KB angezeigt]\\n" if length > MAX_READ else "") + output
+    return ("[Nur die letzten 500 KB angezeigt]\n" if length > MAX_READ else "") + output
