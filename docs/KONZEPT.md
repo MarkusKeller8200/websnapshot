@@ -144,3 +144,13 @@ Drei Modi pro Website: statisch (requests), browsergestützt (Playwright/Chromiu
 - Sitemap-Navigation als kompakte Tabelle mit Pfad, Titel, URL, Zeichenzahl und Link zur Originalseite.
 
 Einschränkungen: Partial-Läufe entdecken keine neuen Seiten oder Dokumentlinks, erfassen keine Löschung allein durch Nichterreichbarkeit und garantieren keine kürzere Laufzeit bei vielen bekannten URLs. Browser-Rendering kann wegen Ressourcen von Drittanbietern, Redirects, Login oder komplexer Navigation unvollständig sein. Verifikation auf dem lokalen Windows-Rechner steht aus. Installationsanleitung unter [Version 0.6.0](VERSION_0.6.0.md).
+
+## 16. Releases 0.6.1–0.6.3
+
+0.6.1: URL-Trackingparameter normalisieren, Discovery-Limits, Pfadvariantenbegrenzung, URL-Herkunft und Status in SQLite erfassen, kooperative Abbruchanforderung für Hintergrundjobs.
+
+0.6.2: HTTP-Content-Type statt Dateiendung als Dokumenthinweis auch bei PHP-Downloads auswerten; Dateien weiterhin nur auf expliziten Download hin speichern. Gleiche HTML-Textinhalte auf unterschiedlichen URLs als Duplikat zählen, nicht automatisch löschen.
+
+0.6.3: Crawl-Qualitätsbericht pro Snapshot (bekannt, besucht, archiviert, offen, Fehler, Ausschlüsse, Varianten, häufigste Parameter und Pfade) in der Oberfläche. Die Qualitätsbewertung bezieht sich auf bekannte URLs; dynamische, geschützte und unverlinkte Inhalte können fehlen.
+
+Details: [Release-Notizen](RELEASE_0.6.1-0.6.3.md). Ein vollständiger Windows- und Browser-Integrationstest steht noch aus.
