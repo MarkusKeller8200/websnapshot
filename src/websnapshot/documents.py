@@ -119,55 +119,99 @@ def destination(url: str, root: Path, flat: bool, content_type: str = "") -> Pat
 
 
 def download_selected(run_id: int, urls: list[str], flat: bool = False,
-                      data: Path = DATA, progress=None) -> list[dict]:
-    """Save only documents explicitly selected from this run."""
+                      data: Path = DATA, progress=None,
+                      profile: dict | None = None) -> list[dict]:
+    """Download only selected URLs, preserve SHA-256, never overwrite existing files.
+
+    In dated mode document metadata is preferred. If neither embedded nor HTTP
+    modification dates are available, the actual download date is used and
+    recorded as an explicit fallback.
+    """
+    from tempfile import NamedTemporaryFile
+    from shutil import copyfileobj
+    from .document_renamer import (
+        default_profile, filename_from_headers, resolve_extension,
+        build_filename, choose_date, file_metadata_dates, unique_name,
+    )
     init(data)
+    profile = profile or default_profile()
     root = data / "downloads"
     with sqlite3.connect(database(data)) as db:
-        allowed = {u for (u,) in db.execute("SELECT url FROM documents WHERE run_id=?", (run_id,))}
+        known = {u:last_modified for u,last_modified in db.execute(
+            "SELECT url,last_modified FROM documents WHERE run_id=?", (run_id,))}
     outcomes = []
     session = requests.Session()
     session.headers["User-Agent"] = AGENT
-    for i, url in enumerate(dict.fromkeys(urls), 1):
-        if url not in allowed:
+    for i,url in enumerate(dict.fromkeys(urls),1):
+        if url not in known:
             outcomes.append({"url":url,"error":"Dokument gehört nicht zum gewählten Snapshot"})
             continue
+        temp = None
         try:
             check_public(url)
-            target = None
-            temp = None
-            size = 0
+            count = 0
             digest = sha256()
-            try:
-                with session.get(url,stream=True,timeout=(5,30),allow_redirects=False) as res:
-                    if res.is_redirect:
-                        raise ValueError("Weiterleitung nicht verfolgt")
-                    res.raise_for_status()
-                    kind=res.headers.get("Content-Type","").lower()
-                    target = destination(url,root,flat,kind)
-                    if not any(x in kind for x in ("pdf","msword","wordprocessingml")):
-                        raise ValueError("Antwort hat keinen PDF/Word-Inhaltstyp")
-                    target.parent.mkdir(parents=True,exist_ok=True)
-                    temp = target.with_name(target.name+".part")
-                    with temp.open("wb") as file:
-                        for chunk in res.iter_content(65536):
-                            size += len(chunk)
-                            if size > MAX_DOWNLOAD:
-                                raise ValueError("Datei überschreitet 100 MB")
-                            file.write(chunk)
-                            digest.update(chunk)
-                temp.replace(target)
-            finally:
-                if temp is not None:
-                    temp.unlink(missing_ok=True)
+            with session.get(url,stream=True,timeout=(5,30),allow_redirects=False) as res:
+                if res.is_redirect:
+                    raise ValueError("Weiterleitung nicht verfolgt")
+                res.raise_for_status()
+                kind=res.headers.get("Content-Type","").lower()
+                if not any(value in kind for value in ("application/pdf",
+                        "msword","wordprocessingml.document")):
+                    raise ValueError("Antwort hat keinen PDF-/Word-Inhaltstyp")
+                source_name=filename_from_headers(
+                    url,res.headers.get("Content-Disposition"))
+                extension=resolve_extension(source_name,kind)
+                root.mkdir(parents=True,exist_ok=True)
+                with NamedTemporaryFile(mode="wb",suffix=".part",
+                                        prefix="ws_",dir=root,delete=False) as handle:
+                    temp=Path(handle.name)
+                    for chunk in res.iter_content(65536):
+                        count += len(chunk)
+                        if count > MAX_DOWNLOAD:
+                            raise ValueError("Datei überschreitet 100 MB")
+                        handle.write(chunk)
+                        digest.update(chunk)
+                date_sources=file_metadata_dates(temp,extension)
+                date_sources.extend([
+                    ("HTTP Last-Modified (Download)",res.headers.get("Last-Modified")),
+                    ("HTTP Last-Modified (Inventar)",known.get(url)),
+                ])
+                date,date_source=choose_date(*date_sources)
+                name=build_filename(source_name,extension,
+                    mode=profile.get("mode","dated"),
+                    code=profile.get("code","WEB"),
+                    case=profile.get("case","title"),date=date)
+                host=_clean(urlsplit(url).netloc.replace(":","_"))
+                segments=[_clean(unquote(part)) for part in
+                          PurePosixPath(urlsplit(url).path).parts if part != "/"]
+                folder = root / host if flat else root.joinpath(host,*segments[:-1])
+                folder.mkdir(parents=True,exist_ok=True)
+                # Exclusive creation also handles parallel downloads safely.
+                target=unique_name(folder/name)
+                while True:
+                    try:
+                        with target.open("xb") as output, temp.open("rb") as source:
+                            copyfileobj(source,output,65536)
+                        break
+                    except FileExistsError:
+                        target=unique_name(target)
+                    except Exception:
+                        target.unlink(missing_ok=True)
+                        raise
             with sqlite3.connect(database(data)) as db:
                 db.execute("""INSERT INTO downloads
-                    (run_id,url,path,bytes,digest,downloaded_at) VALUES (?,?,?,?,?,?)""",
-                    (run_id,url,str(target),size,digest.hexdigest(),
+                    (run_id,url,path,bytes,digest,downloaded_at) VALUES(?,?,?,?,?,?)""",
+                    (run_id,url,str(target),count,digest.hexdigest(),
                      datetime.now(timezone.utc).isoformat()))
-            outcomes.append({"url":url,"path":str(target),"bytes":size})
+            outcomes.append({"url":url,"path":str(target),"bytes":count,
+                             "sha256":digest.hexdigest(),"date_source":date_source,
+                             "date":date.strftime("%Y-%m-%d")})
         except (requests.RequestException,ValueError,OSError) as exc:
             outcomes.append({"url":url,"error":str(exc)})
+        finally:
+            if temp is not None:
+                temp.unlink(missing_ok=True)
         if progress:
             progress(done=i,total=len(urls))
     return outcomes
