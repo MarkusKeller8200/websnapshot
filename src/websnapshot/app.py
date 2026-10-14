@@ -19,9 +19,23 @@ from websnapshot.versions import kind, effective_pages, remove_snapshot
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
-st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide")
+st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide",
+                   initial_sidebar_state="collapsed")
+st.markdown("""
+<style>
+.block-container {max-width: 100% !important; padding-top: 1rem !important;
+                  padding-bottom: 1.2rem !important; padding-left: 1.5rem !important;
+                  padding-right: 1.5rem !important;}
+h1 {font-size: 1.7rem !important; margin-bottom: .1rem !important;}
+h2, h3 {margin-top: .65rem !important; margin-bottom: .35rem !important;}
+div[data-testid="stMetric"] {padding: .25rem .5rem;}
+div[data-testid="stMetricValue"] {font-size: 1.55rem;}
+div[data-testid="stVerticalBlock"] {gap: .55rem;}
+div[data-testid="stTabs"] button {padding-top: .45rem; padding-bottom: .45rem;}
+</style>
+""", unsafe_allow_html=True)
 st.title("WebSnapshot")
-st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.6.3")
+st.caption("Lokale Website-Inventarisierung · Version 0.6.3")
 
 tab_overview, tab_sites, tab_snapshots, tab_map, tab_system = st.tabs(
     ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Sitemap", "Updates"])
@@ -109,19 +123,24 @@ with tab_overview:
                    "Speicher umfasst lokale Datenbankdateien; pro Website wird die Textmenge geschätzt.")
         st.subheader('Aktive Snapshot-Jobs')
         running_dashboard()
+        st.subheader("Websites im Überblick")
+        summary_rows = []
         for entry in overview:
             age = entry["oldest_age"]
-            marker = "🔴" if age is not None and age > 30 else "🟢" if age is not None else "⚪"
-            st.subheader(entry["url"])
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Seiten", entry["pages"])
-            c2.metric("Dokumentlinks", entry["documents"])
-            c3.metric("Snapshots", entry["snapshots"])
-            c4.metric("Archivierter Text", f"{entry['content_bytes']/1048576:.2f} MB")
-            st.write(f"{marker} Ältester Snapshot: **{entry['oldest'] or 'Noch keiner'}**"
-                     + (f" (**{age} Tage alt**)" if age is not None else ""))
-            st.caption(f"Letzter Snapshot: {entry['newest'] or '—'} · "
-                       f"Bekannte URLs: {entry['discovered']} · Noch offen: {entry['pending']}")
+            age_status = ("🔴 " if age is not None and age > 30 else "🟢 " if age is not None else "⚪ ")
+            summary_rows.append({
+                "Website": entry["url"],
+                "Seiten": entry["pages"],
+                "Dokumente": entry["documents"],
+                "Snapshots": entry["snapshots"],
+                "Ältester Snapshot": age_status + (f"{age} Tage" if age is not None else "Keiner"),
+                "Letzter Snapshot (UTC)": entry["newest"][:16].replace("T"," ") if entry["newest"] else "—",
+                "Offene URLs": entry["pending"],
+                "Archivierter Text (MB)": round(entry["content_bytes"]/1048576,2)
+            })
+        st.dataframe(summary_rows, hide_index=True, width="stretch",
+                     height=min(650, 38*(len(summary_rows)+1)+10),
+                     column_config={"Website":st.column_config.LinkColumn("Website")})
         st.info("Erfassungszahlen beziehen sich auf entdeckte URLs; eine garantiert "
                 "vollständige Website-Erfassung ist technisch nicht nachweisbar.")
     else:
@@ -290,14 +309,30 @@ with tab_map:
             import sqlite3
             from websnapshot.core import database
             pages = effective_pages(selected_run)
-            st.caption(f"{len(pages)} HTML-Seiten inkl. geerbter Baseline")
+            top_left, top_right = st.columns([3, 2], vertical_alignment="bottom")
+            top_left.caption(f"{len(pages)} HTML-Seiten · inklusive geerbter Baseline")
+            with top_right:
+                table_height = st.select_slider("Tabellenhöhe", options=[350, 550, 800, 1100, 1500],
+                                                value=800, format_func=lambda x: f"{x} px",
+                                                key="sitemap_height")
             table = [{"Pfad":urlsplit(url).path or "/",
                       "Titel":title,"URL":url,"Öffnen":url,
                       "Zeichen":len(content)}
                      for url,(title,content,digest) in sorted(pages.items())]
-            st.dataframe(table, hide_index=True,use_container_width=True,
-                column_config={"Öffnen":st.column_config.LinkColumn("Originalseite",
-                                  display_text="Öffnen")})
+            st.dataframe(
+                table, hide_index=True, width="stretch", height=table_height,
+                row_height=32,
+                column_order=["Pfad", "Titel", "Zeichen", "Öffnen", "URL"],
+                column_config={
+                    "Pfad":st.column_config.TextColumn("Pfad",width="medium"),
+                    "Titel":st.column_config.TextColumn("Seitentitel",width="large"),
+                    "Zeichen":st.column_config.NumberColumn("Zeichen",format="%d",width="small"),
+                    "Öffnen":st.column_config.LinkColumn("Original",display_text="Öffnen ↗",width="small"),
+                    "URL":st.column_config.TextColumn("URL",width="large")
+                })
+            st.caption("Die Tabelle nutzt die ganze Seitenbreite. Über das Symbol rechts oben "
+                       "in der Tabelle kannst du die Vollbildansicht öffnen.")
+
 
 with tab_system:
     with st.expander("Unterbrochene Job-Sperren freigeben"):
