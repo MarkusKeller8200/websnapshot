@@ -2,6 +2,17 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.10 – Link-Limit und Navigation (14.10.2026)
+- **Links pro Seite** global einstellbar von 1 bis 10'000, Standard **1'000** (zuvor fest 300).
+- Bei Schutzlimit-Ausschlüssen werden die nicht weiterverfolgten URLs zusammen mit ihren HTML-Quellseiten in SQLite protokolliert.
+- In der Snapshot-Verwaltung unter Crawl-Diagnose nach ausgeschlossenen URLs suchen und sie als CSV (maximal 10'000 Zeilen je Block) exportieren.
+- Die Sidebar kann in eine **schmale, weiterhin bedienbare Icon-Navigation** umgeschaltet werden; die Hauptansicht erhält dabei mehr Breite.
+- Die Webseiten-Auswahl steht wieder als Dropdown unter «Übersicht»; im Icon-Modus über das 🌐-Symbol.
+- **Tooltipps nur bei eingeklapptem Menü**, rechts neben dem betreffenden Icon; im ausgeklappten Menü keine Tooltips.
+- Ergänzende Tests für Crawl-Limits, persistierte Ausschlusslisten und Navigation.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.10.md)
+
 ## v0.6.9 – Dokumenteigenschaften und Fundstellen
 - PDF, DOC/DOCX, XLS/XLSX, TXT und CSV in Inventar, Metadatenprüfung und Download.
 - Office-Tags wie Titel, Autor, Revision, Firma und Erstellungs-/Änderungsdatum sowie PDF-Metadaten.
