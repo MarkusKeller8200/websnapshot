@@ -122,7 +122,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     limit_exclusions={"discovery":0,"path_variants":0,"page_links":0}
     def limit_warnings():
         warnings=[]
-        if limit_exclusions["discovery"]:
+        if len(queued)>=MAX_DISCOVERED or limit_exclusions["discovery"]:
             warnings.append(f"Discovery-Limit ({MAX_DISCOVERED}) erreicht: {limit_exclusions['discovery']} URL-Kandidaten abgewiesen")
         if limit_exclusions["path_variants"]:
             warnings.append(f"Pfadvarianten-Limit ({MAX_PER_PATH}) erreicht: {limit_exclusions['path_variants']} URL-Kandidaten abgewiesen")
