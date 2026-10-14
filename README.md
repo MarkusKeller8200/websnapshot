@@ -279,3 +279,9 @@ Die Darstellung gilt in der Snapshot-Verwaltung, beim Vorher/Nachher-Vergleich, 
 Details: [Release-Notizen v0.6.15](docs/releases/v0.6.15.md) und [CHANGELOG](CHANGELOG.md).
 
 In der Sitemap-Baumansicht öffnet der neue Button **«🗂️ Alle Ebenen»** alle Verzeichnisebenen. Die bestehende Begrenzung auf 2'500 gleichzeitig sichtbare Einträge schützt grosse Snapshots.
+
+## WebSnapshot v0.6.16 – Auto-Size für sämtliche Tabellen
+
+Alle Tabellen in Dashboard, Snapshot-Verwaltung, Crawl-Diagnose, Dokumentenverwaltung und Sitemap passen **jede Spaltenbreite beim Anzeigen an den Inhalt an**, neu ausdrücklich auch die letzte Spalte. Dafür werden bei grossen Datenmengen bis zu 400 repräsentative Datensätze genutzt. Lange URLs werden auf eine bedienbare Breite begrenzt, statt andere Spalten zu verdrängen.
+
+Auch der Sitemap-Export als **Excel (.xlsx)** verwendet inhaltsabhängig berechnete Spaltenbreiten. CSV-Dateien unterstützen keine gespeicherten Spaltenbreiten. Details: [Release v0.6.16](docs/releases/v0.6.16.md) und [CHANGELOG](CHANGELOG.md).
