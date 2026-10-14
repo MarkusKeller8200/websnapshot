@@ -11,6 +11,7 @@ from .job_logging import write as log_write
 from .core import DATA, database
 from .inventory import discover_and_snapshot
 from .settings import get as get_capture
+from .global_settings import get as get_global
 
 _executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="websnapshot")
 _lock = threading.Lock()
@@ -48,9 +49,13 @@ def launch(site_id: int, url: str, limit: int, data: Path = DATA, snapshot_kind:
     if snapshot_kind not in ('full','partial'):
         raise ValueError('Unbekannter Snapshottyp')
     capture=get_capture(site_id,data)
+    crawl_config=get_global(data)
     setup={"site_url":url,"visit_limit":limit,"capture_mode":capture["mode"],
            "wait_selector":capture.get("wait_selector",""),
-           "wait_ms":capture.get("wait_ms",0),"snapshot_kind":snapshot_kind}
+           "wait_ms":capture.get("wait_ms",0),"snapshot_kind":snapshot_kind,
+           "discovery_limit":crawl_config["discovery_limit"],
+           "page_timeout":crawl_config["page_timeout"],
+           "http_workers":crawl_config["http_workers"]}
     with _lock, _connect(data) as db:
         existing = db.execute("""SELECT id FROM jobs WHERE site_id=?
             AND state IN ('queued','running') ORDER BY id DESC LIMIT 1""", (site_id,)).fetchone()
@@ -90,8 +95,9 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
             log_write(job_id,"INFO",f"Phase={phase}; besucht={visited}; entdeckt={update.get('discovered')}; Seiten={update.get('pages')}; Dokumente={update.get('documents')}",data)
             last_logged.update(phase=phase,visited=visited)
         for warning in update.get("limit_warnings",[]):
-            if warning not in reported_warnings:
-                reported_warnings.add(warning)
+            warning_type=warning.split(":")[0].split(" erreicht")[0]
+            if warning_type not in reported_warnings:
+                reported_warnings.add(warning_type)
                 log_write(job_id,"WARNING",warning,data)
     reported_warnings=set()
     try:
@@ -100,7 +106,14 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
             db.execute("UPDATE jobs SET state='running',last_activity_at=? WHERE id=?",
                        (datetime.now(timezone.utc).isoformat(),job_id))
             db.commit()
-        run_id, result = discover_and_snapshot(site_id,url,limit,data,progress=progress,snapshot_kind=snapshot_kind)
+        with _connect(data) as db:
+            row=db.execute("SELECT progress FROM jobs WHERE id=?",(job_id,)).fetchone()
+            submitted=json.loads(row[0] or "{}")
+        config={k:submitted[k] for k in ("discovery_limit","page_timeout","http_workers")
+                if k in submitted}
+        run_id, result = discover_and_snapshot(
+            site_id,url,limit,data,progress=progress,snapshot_kind=snapshot_kind,
+            config=config)
         with _connect(data) as db:
             previous=db.execute("SELECT progress,started_at FROM jobs WHERE id=?",(job_id,)).fetchone()
             progress_before=json.loads(previous[0] or "{}")
