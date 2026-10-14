@@ -1,6 +1,7 @@
 """Full/partial snapshot metadata, delta resolution and safe removal."""
 from pathlib import Path
 import sqlite3
+from urllib.parse import urlsplit
 from .core import DATA, database, save
 from hashlib import sha256
 
@@ -35,6 +36,37 @@ def effective_pages(run_id: int, data: Path = DATA) -> dict:
             pages.update({u:(t,c,h) for u,t,c,h in db.execute(
                 "SELECT url,title,content,digest FROM pages WHERE run_id=?",(ident,))})
         return pages
+
+def effective_page_metadata(run_id: int, data: Path = DATA) -> list[dict]:
+    """Return effective pages without reading the stored HTML text into memory.
+
+    Resolve Full/Delta ancestry in order; later snapshots override page metadata
+    while inherited baseline pages remain available.
+    """
+    init(data)
+    with sqlite3.connect(database(data)) as db:
+        cursor=run_id
+        lineage=[]
+        seen=set()
+        while cursor is not None:
+            if cursor in seen:
+                raise ValueError("Snapshot-Abhängigkeitszyklus")
+            seen.add(cursor)
+            if not db.execute("SELECT 1 FROM runs WHERE id=?",(cursor,)).fetchone():
+                raise ValueError("Basis-Snapshot fehlt")
+            lineage.append(cursor)
+            info=db.execute("SELECT parent_id FROM snapshot_meta WHERE run_id=?",
+                            (cursor,)).fetchone()
+            cursor=info[0] if info else None
+        pages={}
+        for ident in reversed(lineage):
+            for url,title,chars in db.execute(
+                "SELECT url,title,LENGTH(content) FROM pages WHERE run_id=?",(ident,)):
+                pages[url]={"Pfad":urlsplit(url).path or "/",
+                            "Titel":title,"Zeichen":chars or 0,
+                            "Öffnen":url,"URL":url}
+    return [pages[url] for url in sorted(pages)]
+
 
 def latest_run(site_id: int, data: Path = DATA):
     with sqlite3.connect(database(data)) as db:
