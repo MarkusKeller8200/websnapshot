@@ -135,6 +135,19 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     parent_id = latest_run(site_id,data) if snapshot_kind == 'partial' else None
     if snapshot_kind == 'partial' and parent_id is None:
         raise ValueError('Für Partial-Snapshots wird ein Baseline-Snapshot benötigt')
+    if parent_id is not None and effective_mode=="path":
+        # Delta snapshots inherit all pages from their parent. A former
+        # domain-wide baseline would silently reintroduce out-of-scope pages.
+        with sqlite3.connect(database(data)) as db:
+            exists=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='jobs'").fetchone()
+            prior=db.execute("SELECT progress FROM jobs WHERE run_id=? ORDER BY id DESC LIMIT 1",
+                             (parent_id,)).fetchone() if exists else None
+        previous_scope=(json.loads(prior[0] or "{}").get("crawl_scope")
+                        if prior else None)
+        if previous_scope!="path":
+            raise ValueError("Für diesen Unterbereich zuerst einen neuen Full-Snapshot "
+                             "erstellen: Der Vorgänger hat keinen bestätigten "
+                             "passenden Erfassungsbereich.")
     baseline = effective_pages(parent_id,data) if parent_id else {}
     full_id = parent_id
     if parent_id:
