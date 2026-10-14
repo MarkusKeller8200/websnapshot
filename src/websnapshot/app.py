@@ -21,61 +21,88 @@ from urllib.parse import urlsplit
 from hashlib import sha1
 from websnapshot.document_selection import filter_documents, bulk_selection, merge_visible
 
+
+from websnapshot.ui_diff import comparison_html
+
 ROOT = Path(__file__).resolve().parents[2]
 st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide",
                    initial_sidebar_state="expanded")
 st.markdown("""
 <style>
-.block-container {max-width: 100% !important; padding-top: 1rem !important;
-                  padding-bottom: 1.2rem !important; padding-left: 1.5rem !important;
-                  padding-right: 1.5rem !important;}
-h1 {font-size: 1.7rem !important; margin-bottom: .1rem !important;}
-h2, h3 {margin-top: .65rem !important; margin-bottom: .35rem !important;}
-div[data-testid="stMetric"] {padding: .25rem .5rem;}
-div[data-testid="stMetricValue"] {font-size: 1.55rem;}
-div[data-testid="stVerticalBlock"] {gap: .55rem;}
-div[data-testid="stTabs"] button {padding-top: .45rem; padding-bottom: .45rem;}
+.block-container {
+    max-width: 100% !important;
+    padding-top: 3.7rem !important;
+    padding-bottom: 1.5rem !important;
+    padding-left: 1.6rem !important;
+    padding-right: 1.6rem !important;
+}
+[data-testid="stSidebar"] {width: 20rem !important; min-width: 20rem !important;}
+[data-testid="stVerticalBlock"] {gap: .65rem;}
+[data-testid="stMetricValue"] {font-size: 1.5rem;}
 </style>
 """, unsafe_allow_html=True)
-st.title("WebSnapshot")
-st.caption("Lokale Website-Inventarisierung · Version 0.6.4")
+st.markdown("## 📸 WebSnapshot")
+st.caption("Website-Inventarisierung, Snapshots und Änderungsanalyse · v0.6.5")
 
-tab_overview, tab_sites, tab_snapshots, tab_map, tab_system = st.tabs(
-    ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Sitemap", "Updates"])
-
-
-# Website selection is persistent across Snapshot, Sitemap and administration views.
+NAV = [
+    ("ÜBERSICHT", [
+        ("Dashboard", "📊 Dashboard"),
+        ("Websites verwalten", "🌐 Websites verwalten"),
+    ]),
+    ("SNAPSHOTS", [
+        ("Snapshot starten", "📸 Snapshot starten"),
+        ("Snapshot-Verwaltung", "🗂️ Snapshot-Verwaltung"),
+    ]),
+    ("AUSWERTUNG", [
+        ("Änderungsvergleich", "🔍 Änderungsvergleich"),
+        ("Dokumente", "📄 Dokumente herunterladen"),
+        ("Sitemap", "🗺️ Sitemap"),
+        ("Job-Protokolle", "📋 Job-Protokolle"),
+    ]),
+    ("SYSTEM", [
+        ("Updates", "⚙️ Updates"),
+    ]),
+]
+known_pages={ident for _, entries in NAV for ident,_ in entries}
+if st.session_state.get("ws_page") not in known_pages:
+    st.session_state["ws_page"] = "Dashboard"
+current_page = st.session_state["ws_page"]
 site_options = dict(sites())
 if st.session_state.get("active_site_id") not in site_options:
     st.session_state["active_site_id"] = next(iter(site_options), None)
 active_site_id = st.session_state["active_site_id"]
 with st.sidebar:
-    st.markdown("### 🧭 Webseiten")
-    st.caption("Website auswählen · links oben ein- und ausklappbar")
+    st.markdown("### 🧭 Navigation")
+    for group, entries in NAV:
+        st.caption(group)
+        for page, label in entries:
+            if st.button(label, key="page_"+page,
+                         type="primary" if page==current_page else "secondary",
+                         use_container_width=True):
+                st.session_state["ws_page"]=page
+                st.rerun()
+    st.divider()
+    st.markdown("### 🌐 Webseiten")
     site_search = st.text_input("Webseiten suchen", placeholder="Domain oder Adresse …",
-                                key="sidebar_site_search", label_visibility="collapsed")
-    listed_sites = [(sid, address) for sid, address in site_options.items()
+                                key="sidebar_site_search",label_visibility="collapsed")
+    listed_sites = [(sid,address) for sid,address in site_options.items()
                     if site_search.casefold().strip() in address.casefold()]
-    for sid, address in listed_sites:
-        parsed = urlsplit(address)
-        label = parsed.netloc + (parsed.path.rstrip("/") if parsed.path not in ("", "/") else "")
-        label = label[:43] + "…" if len(label)>44 else label
-        if st.button(f"🌐 {label}", key=f"sidebar_site_{sid}",
+    for sid,address in listed_sites:
+        parsed=urlsplit(address)
+        label=parsed.netloc+(parsed.path.rstrip("/") if parsed.path not in ("","/") else "")
+        label=label[:36]+"…" if len(label)>37 else label
+        if st.button("🌐 "+label,key=f"sidebar_site_{sid}",
                      type="primary" if sid==active_site_id else "secondary",
-                     help=address, use_container_width=True):
+                     help=address,use_container_width=True):
             st.session_state["active_site_id"]=sid
             st.rerun()
     if not site_options:
-        st.info("Noch keine Websites vorhanden.")
+        st.caption("Noch keine Websites registriert.")
     elif not listed_sites:
-        st.caption("Keine Websites für diesen Suchbegriff.")
+        st.caption("Keine passenden Websites.")
     if active_site_id in site_options:
-        st.divider()
-        st.caption("Aktuell ausgewählt")
-        st.markdown(f"**{urlsplit(site_options[active_site_id]).netloc}**")
-        st.caption(site_options[active_site_id])
-    st.divider()
-    st.caption("➕ Neue Websites unter «Websites verwalten» hinzufügen.")
+        st.caption("Ausgewählt: "+site_options[active_site_id])
+    st.caption("Seitenleiste über das Symbol oben links einklappen.")
 
 
 @st.fragment(run_every="2s")
@@ -178,7 +205,7 @@ def running_dashboard():
     if not found:
         st.caption("Keine aktiven Jobs.")
 
-with tab_overview:
+if current_page == "Dashboard":
     overview = dashboard()
     if overview:
         total_sites = len(overview)
@@ -219,7 +246,7 @@ with tab_overview:
     else:
         st.info("Noch keine Websites registriert. Unter «Websites verwalten» hinzufügen.")
 
-with tab_sites:
+if current_page == "Websites verwalten":
     st.subheader("Websites verwalten")
     with st.expander("➕ Neue Website hinzufügen", expanded=False):
         with st.form("add_site", clear_on_submit=True):
@@ -273,311 +300,302 @@ with tab_sites:
     st.caption("Ohne Löschen der Historie bleiben ältere Snapshots in der Datenbank erhalten, "
                "sind nach Entfernen der Website aber über die Oberfläche nicht mehr zugänglich.")
 
-with tab_snapshots:
-    options = dict(sites())
-    if not options:
-        st.info("Bitte zuerst unter «Websites verwalten» eine Website hinzufügen.")
+if current_page == "Snapshot starten":
+    if not site_options or active_site_id is None:
+        st.info("Bitte zuerst eine Website unter «Websites verwalten» hinzufügen.")
     else:
-        site_id = active_site_id
-        st.subheader("📸 Snapshots · " + urlsplit(options[site_id]).netloc)
-        capture = get_capture(site_id)
-        st.caption(f"Website: {options[site_id]} · Modus: {MODES[capture['mode']]} · "
-                   "Andere Website links in der Seitenleiste wählen.")
-
-        history = runs(site_id)
+        site_id=active_site_id
+        st.subheader("📸 Snapshot starten")
+        st.caption(site_options[site_id])
+        capture=get_capture(site_id)
         with st.container(border=True):
-            st.markdown("**Neuen Snapshot starten**")
-            setup_left, setup_right = st.columns([3, 2], vertical_alignment="bottom")
-            with setup_left:
-                snap_kind = st.radio("Snapshot-Typ", ["full","partial"],
-                    format_func=lambda x:"Full / Baseline" if x=="full" else "Partial / Delta",
-                    horizontal=True, key="snapshot_kind")
-            with setup_right:
-                limit = st.number_input("Maximal besuchte URLs", min_value=10,
-                    max_value=20000, value=1000, step=100, key="snapshot_limit")
-            st.caption("Full entdeckt Seiten über Sitemaps und Links; Partial prüft bereits "
-                       "bekannte URLs. Pro Website ist höchstens ein Job gleichzeitig möglich.")
-            job_controls(site_id, options[site_id], int(limit), snap_kind)
+            a,b=st.columns([3,2],vertical_alignment="bottom")
+            with a:
+                snap_kind=st.radio("Snapshot-Art",["full","partial"],
+                    format_func=lambda value:"Full / Baseline" if value=="full" else "Partial / Delta",
+                    horizontal=True,key=f"snapshot_kind_{site_id}")
+            with b:
+                limit=st.number_input("Maximal besuchte URLs",10,20000,1000,step=100,
+                                      key=f"snapshot_limit_{site_id}")
+            st.caption(f"Modus: {MODES[capture['mode']]} · Erfassungseinstellungen unter "
+                       "«Websites verwalten». Bei erreichter Grenze wird der Snapshot als "
+                       "unvollständig protokolliert.")
+            job_controls(site_id,site_options[site_id],int(limit),snap_kind)
 
-        st.markdown("**Snapshot-Archiv**")
+if current_page == "Snapshot-Verwaltung":
+    if not site_options or active_site_id is None:
+        st.info("Bitte zuerst eine Website hinzufügen.")
+    else:
+        site_id=active_site_id
+        st.subheader("🗂️ Snapshot-Verwaltung")
+        st.caption(site_options[site_id])
+        history=runs(site_id)
         if not history:
-            st.info("Für diese Website sind noch keine Snapshots gespeichert.")
+            st.info("Noch keine Snapshots vorhanden. Unter «Snapshot starten» einen Lauf beginnen.")
         else:
-            archive_rows = []
+            archive_rows=[]
             for row in history:
-                j = snapshot_job(row[0])
-                start_time = datetime.fromisoformat(j["started_at"]) if j else None
-                end_time = datetime.fromisoformat(j["ended_at"]) if j and j["ended_at"] else None
-                seconds = max(0,int((end_time-start_time).total_seconds())) if start_time and end_time else None
-                info = json.loads(j["progress"] or "{}") if j else {}
+                job=snapshot_job(row[0])
+                started=datetime.fromisoformat(job["started_at"]) if job else None
+                ended=datetime.fromisoformat(job["ended_at"]) if job and job["ended_at"] else None
+                seconds=max(0,int((ended-started).total_seconds())) if started and ended else None
+                info=json.loads(job["progress"] or "{}") if job else {}
                 archive_rows.append({
-                    "ID":row[0], "Typ":kind(row[0])[0],
-                    "Datum (UTC)":row[1].replace("T"," ")[:19],
-                    "Status":"Abgeschlossen" if row[2]=="complete" else "Unvollständig" if row[2]=="partial" else row[2],
-                    "Dauer":f"{seconds//3600:02d}:{seconds//60%60:02d}:{seconds%60:02d}" if seconds is not None else "—",
+                    "ID":row[0],"Typ":kind(row[0])[0],
+                    "Zeit (UTC)":row[1].replace("T"," ")[:19],
+                    "Erfassung":"Abgeschlossen" if row[2]=="complete" else
+                        "Unvollständig" if row[2]=="partial" else row[2],
+                    "Laufzeit":f"{seconds//3600:02d}:{(seconds//60)%60:02d}:{seconds%60:02d}"
+                               if seconds is not None else "—",
                     "URLs":info.get("discovered","—"),"Seiten":info.get("pages","—"),
                     "Dokumente":info.get("documents","—"),
-                    "Fehler":len(json.loads(row[3] or "[]"))
+                    "Warnungen/Fehler":len(json.loads(row[3] or "[]")),
                 })
-            st.dataframe(archive_rows, hide_index=True, width="stretch",
-                         height=min(360,36*(len(archive_rows)+1)+8))
-            with st.expander("🧾 Snapshot-Zusammenfassung und Fehlerprotokoll", expanded=False):
-                detail_id = st.selectbox("Zusammenfassung und Fehlerprotokoll",
-                    [r[0] for r in history], key="snapshot_detail",
-                    format_func=lambda i:f"Snapshot #{i} · {kind(i)[0]}")
-                detail_row = next(row for row in history if row[0]==detail_id)
-                job = snapshot_job(detail_id)
-                info = json.loads(job["progress"] or "{}") if job else {}
-                issues = json.loads(detail_row[3] or "[]")
-                with st.container(border=True):
-                    st.markdown(f"**Snapshot #{detail_id} – Job-Zusammenfassung**")
-                    if job:
-                        started = datetime.fromisoformat(job["started_at"])
-                        ended = datetime.fromisoformat(job["ended_at"]) if job["ended_at"] else None
-                        duration = (ended-started).total_seconds() if ended else info.get("duration_seconds")
-                        st.caption(f"Job #{job['id']} · {job['state']} · "
-                                   f"Start: {started.strftime('%d.%m.%Y %H:%M:%S')} UTC · "
-                                   f"Ende: {ended.strftime('%d.%m.%Y %H:%M:%S') if ended else '—'} UTC")
-                        if duration is not None:
-                            duration = max(0,int(duration))
-                            st.write(f"**Gesamtlaufzeit:** {duration//3600:02d}:"
-                                     f"{duration//60%60:02d}:{duration%60:02d}")
-                    else:
-                        st.caption("Für diesen älteren Snapshot wurden keine Job-Zeitdaten gespeichert.")
-                    st.caption(f"Snapshot-Typ: {kind(detail_id)[0]} · "
-                               f"Erfassungsstatus: {'Abgeschlossen' if detail_row[2]=='complete' else 'Unvollständig' if detail_row[2]=='partial' else detail_row[2]}")
-                    if info:
-                        st.caption(f"Modus: {info.get('capture_mode','nicht erfasst')} · "
-                                   f"URL-Limit: {info.get('visit_limit','nicht erfasst')} · "
-                                   f"Letzte Phase: {info.get('phase','—')} · "
-                                   f"URL: {info.get('site_url', options[site_id])}")
-                    values = [
-                        ("Entdeckte URLs","discovered"),("Besuchte URLs","visited"),
-                        ("Archivierte Seiten","pages"),("Dokumente","documents"),
-                        ("Noch offen","pending"),("Übersprungen","skipped"),
-                        ("Sitemaps","sitemaps"),("Änderungen","changed")]
-                    st.dataframe([{"Kennzahl":name,"Wert":info.get(key,"Nicht vorhanden")}
-                                  for name,key in values],hide_index=True,
-                                 width="stretch",height=320)
-                    if info.get("limit_warnings"):
-                        st.warning("Erreichte Schutzlimits: " + " · ".join(info["limit_warnings"]))
-                        st.caption("Abgewiesene URL-Kandidaten nach Ursache: "
-                                   + json.dumps(info.get("excluded_limits",{}),ensure_ascii=False))
-                    if info.get("snapshot_kind")=="partial":
-                        st.caption(f"Full-Baseline: #{info.get('full_baseline_id','—')} · "
-                                   f"Änderungen zur Full-Baseline: {info.get('changed_since_full','—')}")
-                    with st.expander(f"Fehler- und Warnungsprotokoll ({len(issues)})",
-                                     expanded=bool(issues)):
-                        if issues:
-                            st.dataframe([{"Nr.":i,"Meldung":msg}
-                                for i,msg in enumerate(issues,1)],hide_index=True,
-                                width="stretch",height=min(500,40*len(issues)+40))
-                            st.download_button("Fehlerprotokoll als JSON herunterladen",
-                                json.dumps({"snapshot_id":detail_id,"errors":issues},
-                                           ensure_ascii=False,indent=2),
-                                file_name=f"websnapshot_{detail_id}_errors.json",
-                                mime="application/json",key=f"download_errors_{detail_id}")
-                        else:
-                            st.success("Keine protokollierten Fehler oder Warnungen.")
-                    st.download_button("Job-Zusammenfassung als JSON herunterladen",
-                        json.dumps({"snapshot_id":detail_id,"kind":kind(detail_id)[0],
-                                    "status":detail_row[2],"job":job,
-                                    "errors":issues},ensure_ascii=False,indent=2),
-                        file_name=f"websnapshot_{detail_id}_summary.json",
-                        mime="application/json",key=f"download_summary_{detail_id}")
-
-
-            section_compare, section_documents, section_quality, section_logs, section_manage = st.tabs(
-                ["Änderungen vergleichen", "Dokumente", "Crawl-Diagnose", "Job-Protokolle", "Verwaltung"])
-            with section_logs:
-                recent_job=latest(site_id)
-                with st.expander("Aktuellster Job",expanded=True):
-                    if recent_job:
-                        st.write(f"Job #{recent_job['id']} · {recent_job['state']}")
-                        st.code(read_job_log(recent_job["id"]),language="text")
-                        if log_path(recent_job["id"]).is_file():
-                            st.download_button("Aktuelle Logdatei herunterladen",
-                                data=read_job_log(recent_job["id"]),
-                                file_name=f"job_{recent_job['id']}.log",mime="text/plain",
-                                key=f"currentlog_{site_id}")
-                    else:
-                        st.info("Noch keine Jobs vorhanden.")
-                job_options=[(r[0],snapshot_job(r[0])) for r in history]
-                job_options=[(run_id,j) for run_id,j in job_options if j]
-                if job_options:
-                    historical=st.selectbox("Abgeschlossenen Job auswählen",
-                        options=[j["id"] for _,j in job_options],key="historical_log_id",
-                        format_func=lambda i:f"Job #{i}")
-                    st.code(read_job_log(historical),language="text")
-                    if log_path(historical).is_file():
-                        st.download_button("Historische Logdatei herunterladen",
-                            data=read_job_log(historical),file_name=f"job_{historical}.log",
-                            mime="text/plain",key=f"loghistory_{historical}")
-
-
-            with section_compare:
-                if len(history) < 2:
-                    st.info("Für einen Vergleich werden zwei Snapshots benötigt.")
+            st.dataframe(archive_rows,hide_index=True,width="stretch",
+                height=min(440,36*(len(history)+1)+20))
+            selected=st.selectbox("Snapshot-Details", [r[0] for r in history],
+                                  key=f"snapshot_manage_{site_id}",
+                                  format_func=lambda i:f"Snapshot #{i} · {kind(i)[0]}")
+            record=next(r for r in history if r[0]==selected)
+            job=snapshot_job(selected)
+            progress=json.loads(job["progress"] or "{}") if job else {}
+            issues=json.loads(record[3] or "[]")
+            cols=st.columns(4)
+            for col,label,key in zip(cols,
+                ["URLs entdeckt","Besucht","Seiten","Dokumente"],
+                ["discovered","visited","pages","documents"]):
+                col.metric(label,progress.get(key,"—"))
+            with st.expander("📋 Gesamte Job-Zusammenfassung",expanded=True):
+                if job:
+                    started=datetime.fromisoformat(job["started_at"])
+                    ended=datetime.fromisoformat(job["ended_at"]) if job["ended_at"] else None
+                    elapsed=(ended-started).total_seconds() if ended else None
+                    st.caption("Job #"+str(job["id"])+" · "+job["state"]+
+                        " · Start: "+started.strftime("%d.%m.%Y %H:%M:%S UTC")+
+                        (" · Ende: "+ended.strftime("%d.%m.%Y %H:%M:%S UTC") if ended else ""))
+                    if elapsed is not None:
+                        elapsed=max(0,int(elapsed))
+                        st.metric("Gesamtlaufzeit",
+                            f"{elapsed//3600:02d}:{elapsed//60%60:02d}:{elapsed%60:02d}")
                 else:
-                    ids = [row[0] for row in history]
-                    older, newer = st.columns(2)
-                    old_id = older.selectbox("Ausgangs-Snapshot", ids, index=1,
-                                            key="compare_old")
-                    new_id = newer.selectbox("Vergleichs-Snapshot", ids, index=0,
-                                            key="compare_new")
-                    if old_id == new_id:
-                        st.info("Bitte zwei unterschiedliche Snapshots auswählen.")
-                    else:
-                        changes = compare(old_id, new_id)
-                        st.metric("Erkannte Textunterschiede", len(changes))
-                        st.download_button("HTML-Änderungsbericht herunterladen",
-                            report(changes, old_id, new_id),
-                            file_name=f"websnapshot_{old_id}_{new_id}.html",
-                            mime="text/html", key="comparison_export")
-                        st.caption("Fehlende Seiten sind nicht automatisch gelöscht.")
-                        for item in changes:
-                            with st.expander(f"{item['kind'].upper()} · {item['url']}"):
-                                st.code(item["diff"] or "Kein Text-Diff", language="diff")
-
-            with section_documents:
-                doc_run = st.selectbox("Dokumentinventar", [r[0] for r in history],
-                                       key=f"document_run_{site_id}")
-                docs = list_documents(doc_run)
-                st.caption("PDF- und Word-Dateien werden ausschliesslich nach Auswahl "
-                           "heruntergeladen. Suche und Auswahl gelten nur für diesen Snapshot.")
-                if not docs:
-                    st.info("Für diesen Snapshot ist keine Dokumentliste vorhanden.")
+                    st.caption("Zu diesem älteren Snapshot sind keine Job-Zeitdaten vorhanden.")
+                rows=[
+                    {"Angabe":"Snapshot-Typ","Wert":kind(selected)[0]},
+                    {"Angabe":"Erfassungsstatus","Wert":record[2]},
+                ]+[{"Angabe":key,"Wert":str(value)} for key,value in progress.items()
+                     if key not in ("errors","excluded_limits","limit_warnings")]
+                st.dataframe(rows,hide_index=True,width="stretch",height=360)
+                if progress.get("limit_warnings"):
+                    st.warning(" · ".join(progress["limit_warnings"]))
+                if progress.get("excluded_limits"):
+                    st.json(progress["excluded_limits"])
+                st.download_button("Zusammenfassung als JSON herunterladen",
+                    json.dumps({"snapshot_id":selected,"type":kind(selected)[0],
+                                "status":record[2],"job":job,"errors":issues},
+                               ensure_ascii=False,indent=2),
+                    file_name=f"websnapshot_{selected}_summary.json",mime="application/json",
+                    key=f"manage_export_{selected}")
+            with st.expander(f"⚠️ Fehler und Warnungen ({len(issues)})",expanded=bool(issues)):
+                if issues:
+                    st.dataframe([{"Nr.":i,"Meldung":message}
+                        for i,message in enumerate(issues,1)],hide_index=True,width="stretch",height=350)
+                    st.download_button("Fehlerprotokoll herunterladen",
+                        json.dumps(issues,ensure_ascii=False,indent=2),
+                        file_name=f"websnapshot_{selected}_errors.json",mime="application/json")
                 else:
-                    prefix = f"doc_{site_id}_{doc_run}"
-                    selection_key = f"{prefix}_selected_urls"
-                    revision_key = f"{prefix}_editor_revision"
-                    previous_filter_key = f"{prefix}_previous_filter"
-                    selected_urls = set(st.session_state.get(selection_key, []))
-                    all_urls = [d["url"] for d in docs]
-                    valid_urls = set(all_urls)
-                    selected_urls &= valid_urls
-                    search = st.text_input("Dokumente suchen",
-                        placeholder="Dateiname, PDF-Link oder Änderungsstatus suchen …",
-                        key=f"{prefix}_search",help="Gross-/Kleinschreibung spielt keine Rolle.")
-                    if st.session_state.get(previous_filter_key) != search:
-                        st.session_state[previous_filter_key] = search
-                        st.session_state[revision_key] = st.session_state.get(revision_key,0)+1
-                    filtered_docs = filter_documents(docs,search)
-                    visible_urls = [d["url"] for d in filtered_docs]
-                    st.caption(f"**{len(filtered_docs)} von {len(docs)}** Dokumenten sichtbar · "
-                               f"**{len(selected_urls)}** insgesamt ausgewählt")
-                    button_cols = st.columns(4)
-                    actions = [
-                        ("☑️ Alle auswählen","all_select"),
-                        ("☐ Alle abwählen","all_clear"),
-                        ("☑️ Gefilterte auswählen","filtered_select"),
-                        ("☐ Gefilterte abwählen","filtered_clear")]
-                    for col,(caption,action) in zip(button_cols,actions):
-                        with col:
-                            if st.button(caption,key=f"{prefix}_{action}",
-                                         use_container_width=True,
-                                         disabled=not docs or (
-                                             action.startswith("filtered") and not filtered_docs)):
-                                selected_urls = bulk_selection(
-                                    selected_urls,all_urls,visible_urls,action)
-                                st.session_state[revision_key] = (
-                                    st.session_state.get(revision_key,0)+1)
-                    st.caption("Auswahl direkt in der ersten Tabellenspalte ändern. "
-                               "«Gefilterte abwählen» lässt ausgeblendete Dokumente ausgewählt.")
-                    if filtered_docs:
-                        editor_rows = [
-                            {"Auswahl":d["url"] in selected_urls,
-                             "Dokument":d["url"], "Status":d["status"],
-                             "Grösse (HTTP)":d["length"] or "Unbekannt",
-                             "Gespeichert":bool(d["downloaded"])}
-                            for d in filtered_docs]
-                        revision = st.session_state.get(revision_key,0)
-                        edited = st.data_editor(
-                            editor_rows,key=f"{prefix}_editor_{revision}",
-                            hide_index=True,width="stretch",height=490,
-                            num_rows="fixed",row_height=33,
-                            disabled=["Dokument","Status","Grösse (HTTP)","Gespeichert"],
-                            column_config={
-                                "Auswahl":st.column_config.CheckboxColumn(
-                                    "Auswahl",width="small",required=True),
-                                "Dokument":st.column_config.LinkColumn(
-                                    "Dokument / URL",width="large"),
-                                "Status":st.column_config.TextColumn("Änderungsstatus",width="medium"),
-                                "Grösse (HTTP)":st.column_config.TextColumn("Grösse",width="small"),
-                                "Gespeichert":st.column_config.CheckboxColumn(
-                                    "Heruntergeladen",width="small")})
-                        visible_selected={row["Dokument"] for row in edited if row["Auswahl"]}
-                        selected_urls=merge_visible(
-                            selected_urls,all_urls,visible_urls,visible_selected)
-                    else:
-                        st.info("Keine Dokumente passen zum Suchbegriff. "
-                                "Du kannst den Filter löschen oder neu suchen.")
-                    st.session_state[selection_key]=sorted(selected_urls)
-                    st.caption(f"**{len(selected_urls)} Dokumente für den Download vorgemerkt** "
-                               "– auch ausserhalb des aktuellen Suchfilters.")
-                    layout = st.radio("Speicherstruktur",
-                        ["Website-Ordnerstruktur","Flacher Ordner"],
-                        horizontal=True,key=f"{prefix}_layout")
-                    if st.button(f"⬇️ {len(selected_urls)} ausgewählte Dokumente herunterladen",
-                                 disabled=not selected_urls,key=f"{prefix}_download",
-                                 type="primary"):
-                        with st.spinner(f"{len(selected_urls)} Dokumente herunterladen …"):
-                            outcomes=download_selected(doc_run,sorted(selected_urls),
-                                                       flat=layout=="Flacher Ordner")
-                        success_count=sum("error" not in item for item in outcomes)
-                        st.success(f"{success_count} von {len(outcomes)} Dokumenten gespeichert.")
-                        for item in outcomes:
-                            if "error" in item:
-                                st.error(f"{item['url']}: {item['error']}")
-                        st.caption("Lokales Verzeichnis: .data/downloads")
-            with section_quality:
-                diagnostic_id = st.selectbox("Snapshot für Diagnose",
-                    [r[0] for r in history], key="diagnostic_run")
-                diag = summary(diagnostic_id)
-                quality = diag["quality"]
+                    st.success("Keine Fehler oder Warnungen im Snapshot erfasst.")
+            with st.expander("🔬 Crawl-Diagnose"):
+                diag=summary(selected)
+                quality=diag["quality"]
                 if quality:
-                    st.write(f"**Erfassungsstatus:** {quality[10]}")
-                    metrics = st.columns(4)
-                    for column,label,value in zip(metrics,
-                        ["URLs bekannt","Besucht","Archiviert","Offen"],
-                        [quality[1],quality[2],quality[3],quality[5]]):
-                        column.metric(label,value)
+                    st.write("**Qualität:** "+str(quality[10]))
                     if quality[9]:
-                        st.warning("Sicherheitslimit erreicht: Erfassung unvollständig.")
+                        st.warning("Erfassungsgrenze erreicht – Snapshot unvollständig.")
                     st.caption(f"Inhaltsduplikate: {quality[8]} · Fehler: {quality[7]}")
-                else:
-                    st.info("Für diesen älteren Snapshot sind keine Diagnosedaten vorhanden.")
-                with st.expander("Quellen, Ausschlüsse und URL-Muster"):
-                    st.write("Quellen", diag["sources"])
-                    st.write("Zustände", diag["statuses"])
-                    st.write("Ausschlüsse", diag["reasons"])
-                    patterns_left, patterns_right = st.columns(2)
-                    with patterns_left:
-                        st.dataframe([{"Pfad":p,"Varianten":n} for p,n in diag["paths"]],
-                                     hide_index=True,width="stretch")
-                    with patterns_right:
-                        st.dataframe([{"Parameter":p,"Vorkommen":n}
-                                      for p,n in diag["parameters"]],
-                                     hide_index=True,width="stretch")
-
-            with section_manage:
-                st.caption("Full-Snapshots können nur gelöscht werden, wenn keine "
-                           "abhängigen Delta-Snapshots vorhanden sind.")
-                remove_id = st.selectbox("Snapshot zum Löschen",
-                    [r[0] for r in history], key="remove_snapshot",
-                    format_func=lambda i:f"#{i} · {kind(i)[0]}")
-                confirm = st.checkbox("Dauerhafte Löschung bestätigen",
-                                      key="confirm_snapshot")
-                if st.button("Snapshot löschen", key="delete_snapshot",
-                             disabled=not confirm or running()>0):
+                st.write("URL-Quellen",diag["sources"])
+                st.write("Bearbeitungsstatus",diag["statuses"])
+                st.write("Ausschlussgründe",diag["reasons"])
+                a,b=st.columns(2)
+                a.dataframe([{"Pfad":path,"Varianten":count} for path,count in diag["paths"]],
+                            hide_index=True,width="stretch")
+                b.dataframe([{"Parameter":name,"Vorkommen":count}
+                              for name,count in diag["parameters"]],
+                            hide_index=True,width="stretch")
+            with st.expander("🗑️ Snapshot löschen"):
+                st.warning("Die Löschung ist endgültig. Full-Snapshots mit abhängigen "
+                           "Delta-Snapshots können nicht gelöscht werden.")
+                confirm=st.checkbox("Löschung bestätigen",key=f"confirm_delete_{selected}")
+                if st.button("Snapshot endgültig löschen",
+                             disabled=not confirm or running()>0,key=f"delete_{selected}"):
                     try:
-                        remove_snapshot(site_id,remove_id)
-                        st.success("Snapshot gelöscht.")
+                        remove_snapshot(site_id,selected)
+                        st.success("Snapshot entfernt.")
                         st.rerun()
                     except ValueError as exc:
                         st.error(str(exc))
 
-with tab_map:
+if current_page == "Änderungsvergleich":
+    if not site_options or active_site_id is None:
+        st.info("Bitte zuerst eine Website hinzufügen.")
+    else:
+        site_id=active_site_id
+        st.subheader("🔍 Änderungen vergleichen")
+        st.caption(site_options[site_id])
+        history=runs(site_id)
+        if len(history)<2:
+            st.info("Für einen Vergleich müssen mindestens zwei Snapshots gespeichert sein.")
+        else:
+            ids=[r[0] for r in history]
+            before_col,after_col=st.columns(2)
+            old_id=before_col.selectbox("Vorher",ids,index=1,key=f"before_{site_id}")
+            new_id=after_col.selectbox("Nachher",ids,index=0,key=f"after_{site_id}")
+            if old_id==new_id:
+                st.info("Bitte zwei unterschiedliche Snapshots auswählen.")
+            else:
+                changes=compare(old_id,new_id)
+                st.metric("Unterschiedliche Seiten",len(changes))
+                if not changes:
+                    st.success("Zwischen diesen Snapshots sind keine Textänderungen erkennbar.")
+                else:
+                    kind_filter=st.radio("Änderungen anzeigen",
+                        ["Alle","Geändert","Neu","Fehlend"],horizontal=True,
+                        key=f"change_filter_{site_id}")
+                    map_filter={"Geändert":"changed","Neu":"added","Fehlend":"missing"}
+                    display=[item for item in changes if kind_filter=="Alle" or
+                             item["kind"]==map_filter.get(kind_filter)]
+                    st.caption(f"{len(display)} von {len(changes)} Ergebnissen")
+                    if display:
+                        selected=st.selectbox("Seite auswählen",range(len(display)),
+                            format_func=lambda i:f"{display[i]['kind']} · {display[i]['title']} · "
+                                                  f"{display[i]['url']}",
+                            key=f"diff_page_{site_id}_{old_id}_{new_id}_{kind_filter}")
+                        change=display[selected]
+                        st.caption("HTML-Textvergleich direkt im Browser. "
+                                   "Die ursprüngliche Seitengestaltung wird nicht gespeichert.")
+                        st.link_button("🌐 Aktuelle Originalseite öffnen",change["url"])
+                        from websnapshot.ui_diff import comparison_html
+                        old_pages=effective_pages(old_id)
+                        new_pages=effective_pages(new_id)
+                        url=change["url"]
+                        before=old_pages[url][1] if url in old_pages else ""
+                        after=new_pages[url][1] if url in new_pages else ""
+                        st.components.v1.html(
+                            comparison_html(before,after,change["title"]),
+                            height=620,scrolling=True)
+                        with st.expander("Technische Textänderungen"):
+                            st.code(change["diff"] or "Keine Zeilendifferenz vorhanden",
+                                    language="diff")
+                with st.expander("⬇️ Optional: HTML-Änderungsbericht herunterladen"):
+                    st.download_button("HTML-Bericht herunterladen",
+                        report(changes,old_id,new_id),
+                        file_name=f"websnapshot_{old_id}_{new_id}.html",
+                        mime="text/html",key=f"compare_export_{old_id}_{new_id}")
+                st.caption("Hinweis: Eine im Snapshot fehlende Seite gilt "
+                           "nicht automatisch als gelöscht.")
+
+if current_page == "Dokumente":
+    if not site_options or active_site_id is None:
+        st.info("Bitte zuerst eine Website hinzufügen.")
+    else:
+        site_id=active_site_id
+        st.subheader("📄 Dokumente herunterladen")
+        st.caption(site_options[site_id])
+        history=runs(site_id)
+        if not history:
+            st.info("Noch keine Snapshots oder Dokumente erfasst.")
+        else:
+            doc_run = st.selectbox("Dokumentinventar", [r[0] for r in history],
+                                   key=f"document_run_{site_id}")
+            docs = list_documents(doc_run)
+            st.caption("PDF- und Word-Dateien werden ausschliesslich nach Auswahl "
+                       "heruntergeladen. Suche und Auswahl gelten nur für diesen Snapshot.")
+            if not docs:
+                st.info("Für diesen Snapshot ist keine Dokumentliste vorhanden.")
+            else:
+                prefix = f"doc_{site_id}_{doc_run}"
+                selection_key = f"{prefix}_selected_urls"
+                revision_key = f"{prefix}_editor_revision"
+                previous_filter_key = f"{prefix}_previous_filter"
+                selected_urls = set(st.session_state.get(selection_key, []))
+                all_urls = [d["url"] for d in docs]
+                valid_urls = set(all_urls)
+                selected_urls &= valid_urls
+                search = st.text_input("Dokumente suchen",
+                    placeholder="Dateiname, PDF-Link oder Änderungsstatus suchen …",
+                    key=f"{prefix}_search",help="Gross-/Kleinschreibung spielt keine Rolle.")
+                if st.session_state.get(previous_filter_key) != search:
+                    st.session_state[previous_filter_key] = search
+                    st.session_state[revision_key] = st.session_state.get(revision_key,0)+1
+                filtered_docs = filter_documents(docs,search)
+                visible_urls = [d["url"] for d in filtered_docs]
+                st.caption(f"**{len(filtered_docs)} von {len(docs)}** Dokumenten sichtbar · "
+                           f"**{len(selected_urls)}** insgesamt ausgewählt")
+                button_cols = st.columns(4)
+                actions = [
+                    ("☑️ Alle auswählen","all_select"),
+                    ("☐ Alle abwählen","all_clear"),
+                    ("☑️ Gefilterte auswählen","filtered_select"),
+                    ("☐ Gefilterte abwählen","filtered_clear")]
+                for col,(caption,action) in zip(button_cols,actions):
+                    with col:
+                        if st.button(caption,key=f"{prefix}_{action}",
+                                     use_container_width=True,
+                                     disabled=not docs or (
+                                         action.startswith("filtered") and not filtered_docs)):
+                            selected_urls = bulk_selection(
+                                selected_urls,all_urls,visible_urls,action)
+                            st.session_state[revision_key] = (
+                                st.session_state.get(revision_key,0)+1)
+                st.caption("Auswahl direkt in der ersten Tabellenspalte ändern. "
+                           "«Gefilterte abwählen» lässt ausgeblendete Dokumente ausgewählt.")
+                if filtered_docs:
+                    editor_rows = [
+                        {"Auswahl":d["url"] in selected_urls,
+                         "Dokument":d["url"], "Status":d["status"],
+                         "Grösse (HTTP)":d["length"] or "Unbekannt",
+                         "Gespeichert":bool(d["downloaded"])}
+                        for d in filtered_docs]
+                    revision = st.session_state.get(revision_key,0)
+                    edited = st.data_editor(
+                        editor_rows,key=f"{prefix}_editor_{revision}",
+                        hide_index=True,width="stretch",height=490,
+                        num_rows="fixed",row_height=33,
+                        disabled=["Dokument","Status","Grösse (HTTP)","Gespeichert"],
+                        column_config={
+                            "Auswahl":st.column_config.CheckboxColumn(
+                                "Auswahl",width="small",required=True),
+                            "Dokument":st.column_config.LinkColumn(
+                                "Dokument / URL",width="large"),
+                            "Status":st.column_config.TextColumn("Änderungsstatus",width="medium"),
+                            "Grösse (HTTP)":st.column_config.TextColumn("Grösse",width="small"),
+                            "Gespeichert":st.column_config.CheckboxColumn(
+                                "Heruntergeladen",width="small")})
+                    visible_selected={row["Dokument"] for row in edited if row["Auswahl"]}
+                    selected_urls=merge_visible(
+                        selected_urls,all_urls,visible_urls,visible_selected)
+                else:
+                    st.info("Keine Dokumente passen zum Suchbegriff. "
+                            "Du kannst den Filter löschen oder neu suchen.")
+                st.session_state[selection_key]=sorted(selected_urls)
+                st.caption(f"**{len(selected_urls)} Dokumente für den Download vorgemerkt** "
+                           "– auch ausserhalb des aktuellen Suchfilters.")
+                layout = st.radio("Speicherstruktur",
+                    ["Website-Ordnerstruktur","Flacher Ordner"],
+                    horizontal=True,key=f"{prefix}_layout")
+                if st.button(f"⬇️ {len(selected_urls)} ausgewählte Dokumente herunterladen",
+                             disabled=not selected_urls,key=f"{prefix}_download",
+                             type="primary"):
+                    with st.spinner(f"{len(selected_urls)} Dokumente herunterladen …"):
+                        outcomes=download_selected(doc_run,sorted(selected_urls),
+                                                   flat=layout=="Flacher Ordner")
+                    success_count=sum("error" not in item for item in outcomes)
+                    st.success(f"{success_count} von {len(outcomes)} Dokumenten gespeichert.")
+                    for item in outcomes:
+                        if "error" in item:
+                            st.error(f"{item['url']}: {item['error']}")
+                    st.caption("Lokales Verzeichnis: .data/downloads")
+
+if current_page == "Sitemap":
     st.subheader("Sitemap / erfasste Seiten")
     options = dict(sites())
     if not options:
@@ -618,7 +636,50 @@ with tab_map:
                        "in der Tabelle kannst du die Vollbildansicht öffnen.")
 
 
-with tab_system:
+if current_page == "Job-Protokolle":
+    if not site_options or active_site_id is None:
+        st.info("Bitte zuerst eine Website hinzufügen.")
+    else:
+        site_id=active_site_id
+        st.subheader("📋 Job-Protokolle")
+        st.caption(site_options[site_id])
+        job=latest(site_id)
+        if job:
+            st.write(f"**Letzter Job #{job['id']} · {job['state']}**")
+            last_activity=job.get("last_activity_at") or job.get("last_progress_at")
+            if last_activity:
+                st.caption("Letzte Aktivität (UTC): "+last_activity)
+                if job["state"]=="running":
+                    from datetime import timezone
+                    idle=int((datetime.now(timezone.utc)-
+                        datetime.fromisoformat(last_activity)).total_seconds())
+                    if idle>60:
+                        st.warning(f"Seit {idle} Sekunden keine neue Fortschrittsmeldung.")
+            from websnapshot.job_logging import read as read_job_log, log_path
+            st.code(read_job_log(job["id"]),language="text")
+            if log_path(job["id"]).is_file():
+                st.download_button("Logdatei herunterladen",
+                    data=log_path(job["id"]).read_bytes(),
+                    file_name=f"job_{job['id']}.log",mime="text/plain")
+        else:
+            st.info("Noch kein Job vorhanden.")
+        history=runs(site_id)
+        history_jobs=[snapshot_job(r[0]) for r in history]
+        history_jobs=[j for j in history_jobs if j]
+        if history_jobs:
+            with st.expander("Ältere Job-Protokolle"):
+                from websnapshot.job_logging import read as read_job_log, log_path
+                choices={j["id"]:j for j in history_jobs}
+                chosen=st.selectbox("Job auswählen",list(choices),
+                    format_func=lambda j:f"Job #{j}",key=f"logs_history_{site_id}")
+                st.code(read_job_log(chosen),language="text")
+                if log_path(chosen).is_file():
+                    st.download_button("Historische Logdatei herunterladen",
+                        data=log_path(chosen).read_bytes(),
+                        file_name=f"job_{chosen}.log",mime="text/plain",
+                        key=f"log_dl_{chosen}")
+
+if current_page == "Updates":
     with st.expander("Unterbrochene Job-Sperren freigeben"):
         st.caption("Nur nach einem Neustart ausführen, wenn definitiv kein Snapshot mehr läuft.")
         if st.button("Sperren manuell freigeben"):
