@@ -23,6 +23,7 @@ from websnapshot.document_selection import filter_documents, bulk_selection, mer
 
 
 from websnapshot.global_settings import get as get_global, save as save_global, VALID_HEIGHTS
+from websnapshot.performance import get as get_performance
 from websnapshot.table_layout import column_width, streamlit_columns
 from websnapshot.ui_diff import comparison_html
 from websnapshot.document_renamer import (get_profile, set_profile, RENAMED, ORIGINAL,
@@ -78,7 +79,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 st.markdown("## 📸 WebSnapshot")
-st.caption("Website-Inventarisierung, Snapshots und Änderungsanalyse · v0.6.5")
+st.caption("Website-Inventarisierung, Snapshots und Änderungsanalyse · v0.6.6")
 
 NAV = [
     ("ÜBERSICHT", [
@@ -182,7 +183,7 @@ def job_controls(site_id, url, limit, snap_kind):
         else:
             discovered=int(info.get("discovered",0) or 0)
             visited=int(info.get("visited",0) or 0)
-            discovery_limit=int(info.get("discovery_limit",10000) or 10000)
+            discovery_limit=int(info.get("discovery_limit",200000) or 200000)
             visit_limit=int(info.get("visit_limit",limit) or limit)
             st.caption(f"Phase: {info.get('phase','Wartet')} · "
                        f"{info.get('pending','—')} URLs in Warteschlange")
@@ -193,6 +194,26 @@ def job_controls(site_id, url, limit, snap_kind):
             with bar_right:
                 st.progress(min(1.,visited/max(visit_limit,1)),
                             text=f"Besuchte URLs: {visited:,} / {visit_limit:,}".replace(",", "'"))
+        perf=info.get("performance") or {}
+        if perf:
+            with st.expander("⏱️ Antwort- und Verarbeitungszeiten (live)",expanded=False):
+                names={"discovery_initial":"Sitemaps / initiale Discovery",
+                       "discovery_links":"Link-Discovery",
+                       "page_fetch":"Seitenabrufe",
+                       "snapshot_save":"Snapshot speichern",
+                       "document_metadata":"Dokument-Metadaten",
+                       "diagnostic_save":"Diagnosedaten speichern"}
+                st.dataframe([{"Phase":names.get(k,k),"Anzahl":v["count"],
+                              "Minimum (ms)":v["min_ms"],
+                              "Durchschnitt (ms)":v["avg_ms"],
+                              "Maximum (ms)":v["max_ms"]}
+                              for k,v in perf.items()],hide_index=True,
+                             width="stretch")
+                st.caption(f"Statische HTML-Seiten: {info.get('static_pages',0)} · "
+                           f"Browser ohne deutliche JS-Änderung: {info.get('browser_static_pages',0)} · "
+                           f"Browser mit dynamischen Inhalten (Indiz): {info.get('browser_dynamic_pages',0)} · "
+                           f"Unklar: {info.get('browser_unknown_pages',0)} · "
+                           f"Timeouts: {info.get('timeouts',0)}")
         warnings=info.get("limit_warnings",[])
         if warnings:
             st.warning("**Schutzlimit erreicht**\n\n" + "\n\n".join(
@@ -355,9 +376,11 @@ if current_page == "Snapshot starten":
             with b:
                 limit=st.number_input("Maximal besuchte URLs",10,20000,int(global_config["visit_limit"]),step=100,
                                       key=f"snapshot_limit_{site_id}")
-            st.caption(f"Modus: {MODES[capture['mode']]} · Erfassungseinstellungen unter "
-                       "«Websites verwalten». Bei erreichter Grenze wird der Snapshot als "
-                       "unvollständig protokolliert.")
+            st.caption(f"Modus: {MODES[capture['mode']]} · "
+                       f"Discovery-Limit: {global_config['discovery_limit']:,} · "
+                       f"Timeout: {global_config['page_timeout']} s · "
+                       f"Parallele HTTP-Aufrufe: {global_config['http_workers']}. "
+                       "Anpassbar unter «Einstellungen».")
             job_controls(site_id,site_options[site_id],int(limit),snap_kind)
 
 if current_page == "Snapshot-Verwaltung":
@@ -421,7 +444,7 @@ if current_page == "Snapshot-Verwaltung":
                     {"Angabe":"Snapshot-Typ","Wert":kind(selected)[0]},
                     {"Angabe":"Erfassungsstatus","Wert":record[2]},
                 ]+[{"Angabe":key,"Wert":str(value)} for key,value in progress.items()
-                     if key not in ("errors","excluded_limits","limit_warnings")]
+                     if key not in ("errors","excluded_limits","limit_warnings","performance")]
                 st.dataframe(rows,hide_index=True,width="stretch",height=360,
                     column_config=streamlit_columns(rows))
                 if progress.get("limit_warnings"):
@@ -445,6 +468,32 @@ if current_page == "Snapshot-Verwaltung":
                         file_name=f"websnapshot_{selected}_errors.json",mime="application/json")
                 else:
                     st.success("Keine Fehler oder Warnungen im Snapshot erfasst.")
+            with st.expander("⏱️ Laufzeitstatistik und Seitentypen",expanded=True):
+                measured=get_performance(selected)
+                if not measured:
+                    st.info("Für diesen älteren Snapshot sind keine Zeitmessungen gespeichert.")
+                else:
+                    names={"discovery_initial":"Initiale Discovery",
+                        "discovery_links":"Link-Discovery","page_fetch":"Seitenabrufe",
+                        "snapshot_save":"Snapshot speichern",
+                        "document_metadata":"Dokument-Metadaten",
+                        "diagnostic_save":"Diagnose speichern"}
+                    st.dataframe([
+                        {"Phase":names.get(k,k),"Messungen":v["count"],
+                         "Min. (ms)":v["min_ms"],"Ø (ms)":v["avg_ms"],
+                         "Max. (ms)":v["max_ms"],"Summe (ms)":v["total_ms"],
+                         "Langsamste URL":v.get("slowest_url","")}
+                        for k,v in measured["timings"].items()],
+                        hide_index=True,width="stretch")
+                    m=st.columns(4)
+                    m[0].metric("Statisch (HTTP)",measured["static_pages"])
+                    m[1].metric("Browser: kaum dynamisch",measured["browser_static_pages"])
+                    m[2].metric("Browser: JS ergänzt",measured["browser_dynamic_pages"])
+                    m[3].metric("Timeouts",measured["timeouts"])
+                    st.caption("Browser-Klassifikation ist eine Heuristik anhand des "
+                        "Unterschieds zwischen Server-HTML und nach JavaScript erzeugtem DOM. "
+                        "Nur im Browsermodus prüfbar; nicht eindeutig zu erkennen: "
+                        +str(measured["browser_unknown_pages"]))
             with st.expander("🔬 Crawl-Diagnose"):
                 diag=summary(selected)
                 quality=diag["quality"]
@@ -812,6 +861,20 @@ if current_page == "Einstellungen":
         default_limit=st.number_input("Standard-Besuchslimit",
             min_value=10,max_value=20000,
             value=int(global_config["visit_limit"]),step=100)
+        st.markdown("**Crawl-Grenzen und Geschwindigkeit**")
+        discovery_limit=st.number_input("Discovery-Limit – maximal entdeckte URLs",
+            min_value=1000,max_value=1_000_000,
+            value=int(global_config.get("discovery_limit",200000)),step=10000)
+        page_timeout=st.number_input("Antwort-Timeout pro Seite (Sekunden)",
+            min_value=1.0,max_value=60.0,
+            value=float(global_config.get("page_timeout",3.0)),
+            step=0.5)
+        http_workers=st.slider("Parallele statische HTTP-Aufrufe",
+            min_value=1,max_value=4,
+            value=int(global_config.get("http_workers",3)))
+        st.caption("Der HTTP-Timeout begrenzt Verbindungsaufbau und Phasen ohne "
+                   "empfangene Daten, nicht zwingend die Gesamtdauer einer Antwort. "
+                   "Browserseiten werden weiterhin nacheinander gerendert.")
         default_sitemap=st.select_slider("Standardhöhe der Sitemap-Tabelle",
             options=list(VALID_HEIGHTS),value=int(global_config["sitemap_height"]),
             format_func=lambda x:f"{x} px")
@@ -822,7 +885,10 @@ if current_page == "Einstellungen":
             save_global(download_directory=download_dir,
                         flat_downloads=default_flat,
                         visit_limit=int(default_limit),
-                        sitemap_height=int(default_sitemap))
+                        sitemap_height=int(default_sitemap),
+                        discovery_limit=int(discovery_limit),
+                        page_timeout=float(page_timeout),
+                        http_workers=int(http_workers))
             st.success("Globale Einstellungen gespeichert.")
             st.rerun()
         except ValueError as exc:
