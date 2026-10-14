@@ -180,13 +180,10 @@ with st.sidebar:
                     return name[:65]+"…" if len(name)>66 else name
                 if compact_nav:
                     with st.popover("🌐",help="Website auswählen",use_container_width=True):
-                        chosen=st.selectbox("Website auswählen",
+                        st.selectbox("Website auswählen",
                             options=list(site_options),
-                            index=list(site_options).index(active_site_id),
-                            format_func=site_label,key="ws_site_compact")
-                        if chosen!=active_site_id:
-                            st.session_state["active_site_id"]=chosen
-                            st.rerun()
+                            format_func=site_label,key="ws_site_dropdown",
+                            on_change=sync_selected_site)
                 else:
                     chosen=st.selectbox("Website auswählen",
                         options=list(site_options),
