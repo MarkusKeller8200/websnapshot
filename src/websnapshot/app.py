@@ -23,6 +23,7 @@ from websnapshot.document_selection import filter_documents, bulk_selection, mer
 
 
 from websnapshot.global_settings import get as get_global, save as save_global, VALID_HEIGHTS
+from websnapshot.table_layout import column_width, streamlit_columns
 from websnapshot.ui_diff import comparison_html
 from websnapshot.document_renamer import (get_profile, set_profile, RENAMED, ORIGINAL,
     CASE_MODES, filename_from_headers, build_filename, choose_date)
@@ -248,7 +249,7 @@ if current_page == "Dashboard":
             })
         st.dataframe(summary_rows, hide_index=True, width="stretch",
                      height=min(650, 38*(len(summary_rows)+1)+10),
-                     column_config={"Website":st.column_config.LinkColumn("Website")})
+                     column_config=streamlit_columns(summary_rows,links=("Website",)))
         st.info("Erfassungszahlen beziehen sich auf entdeckte URLs; eine garantiert "
                 "vollständige Website-Erfassung ist technisch nicht nachweisbar.")
     else:
@@ -360,7 +361,7 @@ if current_page == "Snapshot-Verwaltung":
                     "Warnungen/Fehler":len(json.loads(row[3] or "[]")),
                 })
             st.dataframe(archive_rows,hide_index=True,width="stretch",
-                height=min(440,36*(len(history)+1)+20))
+                column_config=streamlit_columns(archive_rows),height=min(440,36*(len(history)+1)+20))
             selected=st.selectbox("Snapshot-Details", [r[0] for r in history],
                                   key=f"snapshot_manage_{site_id}",
                                   format_func=lambda i:f"Snapshot #{i} · {kind(i)[0]}")
@@ -392,7 +393,8 @@ if current_page == "Snapshot-Verwaltung":
                     {"Angabe":"Erfassungsstatus","Wert":record[2]},
                 ]+[{"Angabe":key,"Wert":str(value)} for key,value in progress.items()
                      if key not in ("errors","excluded_limits","limit_warnings")]
-                st.dataframe(rows,hide_index=True,width="stretch",height=360)
+                st.dataframe(rows,hide_index=True,width="stretch",height=360,
+                    column_config=streamlit_columns(rows))
                 if progress.get("limit_warnings"):
                     st.warning(" · ".join(progress["limit_warnings"]))
                 if progress.get("excluded_limits"):
@@ -406,7 +408,9 @@ if current_page == "Snapshot-Verwaltung":
             with st.expander(f"⚠️ Fehler und Warnungen ({len(issues)})",expanded=bool(issues)):
                 if issues:
                     st.dataframe([{"Nr.":i,"Meldung":message}
-                        for i,message in enumerate(issues,1)],hide_index=True,width="stretch",height=350)
+                        for i,message in enumerate(issues,1)],hide_index=True,width="stretch",height=350,
+                        column_config={"Nr.":st.column_config.Column(width=78),
+                            "Meldung":st.column_config.Column(width=560)})
                     st.download_button("Fehlerprotokoll herunterladen",
                         json.dumps(issues,ensure_ascii=False,indent=2),
                         file_name=f"websnapshot_{selected}_errors.json",mime="application/json")
@@ -425,10 +429,14 @@ if current_page == "Snapshot-Verwaltung":
                 st.write("Ausschlussgründe",diag["reasons"])
                 a,b=st.columns(2)
                 a.dataframe([{"Pfad":path,"Varianten":count} for path,count in diag["paths"]],
-                            hide_index=True,width="stretch")
+                            hide_index=True,width="stretch",
+                            column_config={"Pfad":st.column_config.Column(width=380),
+                                           "Varianten":st.column_config.Column(width=105)})
                 b.dataframe([{"Parameter":name,"Vorkommen":count}
                               for name,count in diag["parameters"]],
-                            hide_index=True,width="stretch")
+                            hide_index=True,width="stretch",
+                            column_config={"Parameter":st.column_config.Column(width=290),
+                                           "Vorkommen":st.column_config.Column(width=120)})
             with st.expander("🗑️ Snapshot löschen"):
                 st.warning("Die Löschung ist endgültig. Full-Snapshots mit abhängigen "
                            "Delta-Snapshots können nicht gelöscht werden.")
@@ -618,13 +626,15 @@ if current_page == "Dokumente":
                         disabled=["Dokument","Status","Grösse (HTTP)","Gespeichert"],
                         column_config={
                             "Auswahl":st.column_config.CheckboxColumn(
-                                "Auswahl",width="small",required=True),
+                                "Auswahl",width=column_width(editor_rows,"Auswahl"),required=True),
                             "Dokument":st.column_config.LinkColumn(
-                                "Dokument / URL",width="large"),
-                            "Status":st.column_config.TextColumn("Änderungsstatus",width="medium"),
-                            "Grösse (HTTP)":st.column_config.TextColumn("Grösse",width="small"),
+                                "Dokument / URL",width=column_width(editor_rows,"Dokument")),
+                            "Status":st.column_config.TextColumn("Änderungsstatus",
+                                width=column_width(editor_rows,"Status")),
+                            "Grösse (HTTP)":st.column_config.TextColumn("Grösse",
+                                width=column_width(editor_rows,"Grösse (HTTP)")),
                             "Gespeichert":st.column_config.CheckboxColumn(
-                                "Heruntergeladen",width="small")})
+                                "Heruntergeladen",width=column_width(editor_rows,"Gespeichert"))})
                     visible_selected={row["Dokument"] for row in edited if row["Auswahl"]}
                     selected_urls=merge_visible(
                         selected_urls,all_urls,visible_urls,visible_selected)
@@ -697,11 +707,13 @@ if current_page == "Sitemap":
                 row_height=32,
                 column_order=["Pfad", "Titel", "Zeichen", "Öffnen", "URL"],
                 column_config={
-                    "Pfad":st.column_config.TextColumn("Pfad",width="medium"),
-                    "Titel":st.column_config.TextColumn("Seitentitel",width="large"),
-                    "Zeichen":st.column_config.NumberColumn("Zeichen",format="%d",width="small"),
-                    "Öffnen":st.column_config.LinkColumn("Original",display_text="Öffnen ↗",width="small"),
-                    "URL":st.column_config.TextColumn("URL",width="large")
+                    "Pfad":st.column_config.TextColumn("Pfad",width=column_width(table,"Pfad")),
+                    "Titel":st.column_config.TextColumn("Seitentitel",width=column_width(table,"Titel")),
+                    "Zeichen":st.column_config.NumberColumn("Zeichen",format="%d",
+                        width=column_width(table,"Zeichen")),
+                    "Öffnen":st.column_config.LinkColumn("Original",display_text="Öffnen ↗",
+                        width=108),
+                    "URL":st.column_config.TextColumn("URL",width=column_width(table,"URL"))
                 })
             st.caption("Die Tabelle nutzt die ganze Seitenbreite. Über das Symbol rechts oben "
                        "in der Tabelle kannst du die Vollbildansicht öffnen.")
