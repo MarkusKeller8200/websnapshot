@@ -39,7 +39,7 @@ def remove_site(site_id: int, delete_history: bool = False, data: Path = DATA) -
             ids = [row[0] for row in db.execute("SELECT id FROM runs WHERE site_id=?", (site_id,))]
             for table in ("pages","documents","downloads","inventory","crawl_urls",
                           "crawl_quality","crawl_performance","document_links","document_referrers",
-                          "document_properties","crawl_link_exclusions","crawl_path_exclusions","snapshot_meta"):
+                          "document_properties","crawl_link_exclusions","crawl_path_exclusions","crawl_discovery_stats","snapshot_meta"):
                 exists=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone()
                 if exists:
                     db.executemany(f"DELETE FROM {table} WHERE run_id=?",[(i,) for i in ids])
