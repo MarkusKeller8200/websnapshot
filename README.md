@@ -263,3 +263,9 @@ Unter **Snapshot starten** erscheinen live die Anzahl eindeutiger Pfade, URLs mi
 Pfad-Ausschlüsse bleiben präzise: `/schule-hinterbirch/aktuelles/agenda/p-2002` sperrt nur diesen Pfad, `/schule-hinterbirch/aktuelles/agenda` würde dagegen den ganzen entsprechenden Agenda-Bereich ausschliessen. Ein bereits laufender Job übernimmt nachträglich gespeicherte Änderungen nicht.
 
 Details: [Release v0.6.13](docs/releases/v0.6.13.md) und [CHANGELOG](CHANGELOG.md).
+
+## WebSnapshot v0.6.14 – Datum und Uhrzeit
+
+Die Datums- und Zeitangaben in Jobübersicht, Dashboard, Snapshot-Verwaltung, Dokumentenlisten, PDF-/Office-Eigenschaften und Protokollen folgen dem Format **`YYYY.MM.DD HH:MM:SS`** (24-Stunden-Uhr). Zeitstempel mit Zeitzoneninformation werden einheitlich in UTC angezeigt. Bei ausschliesslich kalendarischen Daten wird keine nicht vorhandene Uhrzeit erfunden.
+
+Die technische Speicherung der Daten, JSON-Maschinenformate und bestehenden Dateinamen bleibt unverändert. Weitere Einzelheiten: [Release v0.6.14](docs/releases/v0.6.14.md) und [CHANGELOG](CHANGELOG.md).
