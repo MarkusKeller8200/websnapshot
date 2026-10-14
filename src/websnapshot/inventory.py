@@ -17,6 +17,7 @@ import requests
 from bs4 import BeautifulSoup
 from .core import DATA, MAX_BYTES, AGENT, check_public, database, extract, normalize_url, save
 from .documents import inventory_documents
+from .document_metadata import save_references
 from .doclinks import related_document
 from .versions import latest_run, effective_pages, save_partial, mark_full, kind
 from .settings import get as get_capture
@@ -169,6 +170,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     sitemap_seen = set()
     errors = []
     docs = set()
+    document_references = {}
     found = set(queued)
     url_records = {u: ('baseline' if parent_id else 'start','queued','') for u in queued}
     path_counts = {}
@@ -189,7 +191,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
         if len(visited)>=limit and queue:
             warnings.append(f"Besuchslimit ({limit}) erreicht: {len(queue)} URLs offen")
         return warnings
-    def enqueue(link, source):
+    def enqueue(link, source, source_page=None):
         nonlocal truncated, skipped, scope_excluded
         try:
             link=canonical(link)
@@ -199,6 +201,8 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                 if urlsplit(link).netloc==host and not within_scope(link,start,effective_mode):
                     scope_excluded+=1
                 return
+            if is_document(link) and source_page:
+                document_references.setdefault(link,set()).add((source_page,source))
             if link in queued or link in docs:
                 return
             # Recognise linked documents immediately. They do not consume the
@@ -272,7 +276,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     # Avoid enqueuing another department from a domain-wide
                     # sitemap; only pages/docs within the logical subtree.
                     if within_scope(link,start,effective_mode):
-                        sitemap_urls.append(link)
+                        sitemap_urls.append((link,sm))
                     else:
                         scope_excluded+=1
         except (requests.RequestException, ValueError, ET.ParseError, OSError) as exc:
@@ -282,8 +286,8 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
         finally:
             timings.observe("sitemap_fetch",perf_counter()-sitemap_started,sm)
             emit(phase="Sitemaps prüfen")
-    for link in sitemap_urls:
-        enqueue(link,'sitemap')
+    for link,sm_source in sitemap_urls:
+        enqueue(link,'sitemap',sm_source)
     timings.observe("discovery_initial",perf_counter()-discovery_started,origin)
     emit(phase='Seiten durchsuchen')
     worker_state=threading.local()
@@ -312,7 +316,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     continue
                 visited.add(url)
                 url_records[url]=(url_records.get(url,('link','',''))[0],'visited','')
-                if urlsplit(url).path.lower().endswith((".pdf",".docx",".doc")):
+                if urlsplit(url).path.lower().endswith((".pdf",".docx",".doc",".xlsx",".xls",".txt",".csv")):
                     docs.add(url)
                     url_records[url]=(url_records[url][0],"document","")
                     emit(phase="Dokument gefunden")
@@ -350,7 +354,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                             not eligible_link(link,start,effective_mode))
                         links=links_allowed
                         for link in links[:MAX_PER_PAGE]:
-                            enqueue(link,"browser-link")
+                            enqueue(link,"browser-link",url)
                         if len(links)>MAX_PER_PAGE:
                             limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
                             truncated=True
@@ -375,7 +379,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     continue
                 body,kind=reply
                 if "text/html" not in kind:
-                    if "pdf" in kind or "msword" in kind or "wordprocessingml" in kind:
+                    if any(k in kind for k in ("pdf","msword","wordprocessingml","spreadsheetml","vnd.ms-excel","text/plain","text/csv","application/csv")):
                         docs.add(url)
                         url_records[url]=(url_records[url][0],"document","")
                     else:
@@ -398,7 +402,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                             not eligible_link(link,start,effective_mode))
                         links=links_allowed
                         for link in links[:MAX_PER_PAGE]:
-                            enqueue(link,"html-link")
+                            enqueue(link,"html-link",url)
                         if len(links)>MAX_PER_PAGE:
                             limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
                             truncated=True
@@ -429,6 +433,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     metadata_started=perf_counter()
     inventory_documents(run_id, site_id, docs, session, data, progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen", **kw))
     timings.observe("document_metadata",perf_counter()-metadata_started,"HEAD")
+    save_references(run_id,document_references,data)
     emit(phase="Diagnose speichern")
     diag_started=perf_counter()
     with sqlite3.connect(database(data)) as db:
