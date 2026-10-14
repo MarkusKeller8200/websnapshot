@@ -2,6 +2,16 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.12 – Crawl-Ausschlussliste speichern (14.10.2026)
+- Eigener **«Ausschlussliste speichern»**-Button direkt unter dem mehrzeiligen Eingabefeld.
+- Aktuelle Eingabe über Streamlit-Callback übernehmen und Pfade unabhängig von Browser- und Erfassungsmodus speichern.
+- Nach dem Schreiben per **neuer SQLite-Verbindung zurücklesen und prüfen**, bevor eine Erfolgsmeldung erscheint.
+- Tatsächlich gespeicherte Regeln samt Anzahl anzeigen; ungespeicherte Änderungen und Eingabefehler klar kennzeichnen.
+- Allgemeiner Einstellungsbutton bestätigt Änderungen ohne sofortiges Verschwinden der Erfolgsmeldung.
+- Regressionstest für Speicherung, erneutes Laden, Integrität anderer Website-Einstellungen und Fehlerfälle.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.12.md)
+
 ## v0.6.11 – Ausschlussliste für URL-Bereiche (14.10.2026)
 - Pro Website eine mehrzeilige **Crawl-Ausschlussliste** hinterlegen, beispielsweise /schule-hinterbirch/aktuelles/agenda/p-2002.
 - Die Regel schliesst den exakten Pfad, Unterseiten und passende .html-Landingpages aus, ohne ähnlich benannte Nachbarpfade zu blockieren.
