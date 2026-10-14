@@ -2,6 +2,18 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.7 – 10 Worker, grosse Crawls und Sitemap-Baum (14.10.2026)
+- Parallelität im statischen Crawler auf **1–10 HTTP-Worker** einstellbar (Standard weiterhin 3).
+- Besuchslimit auf maximal **100'000 URLs** erhöht; Discovery-Limit erlaubt weiterhin bis zu **1'000'000 URLs**. Standardwerte bleiben bei 2'000 / 200'000.
+- Sitemap mit umschaltbarer **aufklappbarer Pfad-Baumtabelle** und **flacher, sortierbarer Tabelle**.
+- Sitemap-Suche mit automatischem Öffnen gefilterter Ordner; auf 2'500 gleichzeitig sichtbare Baumzeilen begrenzt.
+- Grosse Sitemap-Listen laden nur Pfad, Titel und Länge, nicht mehr den vollständigen HTML-Text.
+- CSV-Export (UTF-8-BOM, Semikolon, Formelschutz) und vollwertiger XLSX-Export mit Filterzeile und eingefrorener Kopfzeile.
+- Für alle Tabellen: Inhaltsabhängige Breiten für alle Spalten **ausser der letzten**, die ihren Platz flexibel erhält.
+- Belastungswarnung im GUI bei sehr hohen Besuchslimits oder acht bis zehn Workern sowie Regressionstests.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.7.md)
+
 ## v0.6.6 – Discovery, Timeout und Performance-Messung (14.10.2026)
 - Discovery-Limit global einstellbar, Standard **200'000 URLs** (bisher 10'000); Besuchslimit **2'000 URLs** (bisher 1'000).
 - Seiten-Timeout konfigurierbar, standardmässig **3 Sekunden** für Verbindungsaufbau und ausbleibende HTTP-Daten; Browsernavigation erhält dieselbe Wartezeitgrenze.
