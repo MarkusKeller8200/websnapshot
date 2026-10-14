@@ -191,3 +191,15 @@ Ein von `www.datenschutz.ch` verlinktes PDF auf `docs.datenschutz.ch` wird auch 
 Die Website-Auswahl erfolgt zentral in einer ein- und ausblendbaren linken Seitenleiste (🌐) mit Suchfeld. Snapshot-Zentrale, Sitemap und Website-Einstellungen übernehmen die gewählte Website automatisch. Im Dokumentinventar stehen eine Suche nach Dateiname, URL und Status, Checkboxen direkt in der Liste und Aktionen zum Auswählen/Abwählen aller beziehungsweise ausschliesslich der gefilterten Dokumente bereit. Auch bei Filterwechseln bleibt die Auswahl von nicht sichtbaren Dokumenten bestehen.
 
 **Versionsgeschichte:** [CHANGELOG.md](CHANGELOG.md) · [GitHub Releases](https://github.com/MarkusKeller8200/websnapshot/releases) · [Hinweise zu v0.6.4](docs/releases/v0.6.4.md). Releases werden durch einen GitHub-Actions-Workflow nach Testprüfung veröffentlicht. Wenn der Workflow nicht erfolgreich war, ist die Veröffentlichung noch nicht abgeschlossen.
+
+## WebSnapshot v0.6.5 – Neues Navigationskonzept und Dokument-Renamer
+
+**Aktueller Stand:** Die Oberfläche verwendet einen linksbündigen, ausklappbaren Menübaum mit getrennten Seiten für Snapshot-Steuerung, -Verwaltung, Änderungsvergleich, Dokumentdownloads, Job-Protokolle, globale Einstellungen und Updates. Änderungen am gespeicherten **HTML-Text** lassen sich direkt im Browser farbig vergleichen. Die Tabellen nutzen inhaltsabhängige, begrenzte Spaltenbreiten.
+
+Für Downloads stehen ein Original-Dateinamensmodus und ein Renamer nach dem Schema `YYYY_MM_DD_HERKUNFT_Dokumentenname.pdf` zur Wahl. Die Herkunft (z. B. `DSB`/`SEKB`) wird pro Website gespeichert. Dokumentdaten stammen vorrangig aus PDF- und DOCX-Metadaten, dann HTTP-`Last-Modified`, ersatzweise aus dem Downloadzeitpunkt. Das genaue Datum und die Quelle werden mit dem Download protokolliert. Namenskonflikte werden ohne URL-Hash durch eine laufende Nummer gelöst; bereits vorhandene Dateien werden nicht ersetzt. Ein SHA-256-Vergleich neu heruntergeladener Inhalte mit früheren Downloads bleibt intern erhalten.
+
+Unter «Einstellungen» lassen sich das globale Download-Verzeichnis (absoluter Pfad), die Standard-Ordnerstruktur, das Besuchslimit und die Sitemap-Tabellenhöhe zentral festlegen. Website-Einstellungen betreffen weiterhin nur die gerade ausgewählte Website.
+
+**Versionsgeschichte:** [CHANGELOG](CHANGELOG.md) · [Release-Notizen v0.6.5](docs/releases/v0.6.5.md) · [alle GitHub Releases](https://github.com/MarkusKeller8200/websnapshot/releases).
+
+**Hinweis:** Ältere Abschnitte dieses README beschreiben den historischen Entwicklungsstand und können abweichende Menübezeichnungen oder frühere Download-Namensregeln enthalten. Massgeblich für die aktuelle Version sind die v0.6.5-Release-Notizen. Die optische Darstellung muss noch auf dem lokalen Windows-System überprüft werden.
