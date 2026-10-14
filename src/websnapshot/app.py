@@ -18,6 +18,7 @@ from websnapshot.document_properties import display_properties
 from websnapshot.jobs import launch, latest, running, recover_interrupted, request_cancel, snapshot_job
 from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
+from websnapshot.crawl_discovery_stats import get as get_discovery_stats
 from websnapshot.path_exclusion_audit import summary as excluded_path_summary
 from websnapshot.link_exclusions import stats as excluded_link_stats, page as excluded_link_page, csv_page as excluded_link_csv_page
 from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings, set_exclusions
@@ -340,6 +341,17 @@ def job_controls(site_id, url, limit, snap_kind):
             st.caption(f"Eigene Ausschlussregeln: {len(info['exclude_paths'])} · "
                        f"Übersprungene URL-Kandidaten: {info.get('path_excluded',0):,}"
                        .replace(",", "'"))
+        if "robots_excluded" in info:
+            st.caption(
+                f"URL-Discovery: {info.get('discovered',0):,} entdeckt · "
+                f"{info.get('unique_paths',0):,} verschiedene Pfade · "
+                f"{info.get('query_variants',0):,} mit URL-Parametern · "
+                f"{info.get('robots_excluded',0):,} von robots.txt abgewiesen."
+                .replace(",", "'"))
+            if info.get("query_variants",0)>max(100,info.get("discovered",0)//3):
+                st.info("Viele erkannte URLs enthalten Query-Parameter. "
+                        "Ein Teil davon kann dieselben Seiten mit unterschiedlichen "
+                        "Filter-, Such- oder Kalenderparametern darstellen.")
         warnings=info.get("limit_warnings",[])
         if warnings:
             st.warning("**Schutzlimit erreicht**\n\n" + "\n\n".join(
@@ -385,6 +397,10 @@ def running_dashboard():
             st.progress(min(1,max(0,percent/100)),text=f"Partial: {percent:.1f}% · {info.get('changed',0)} zum Vorgänger · {info.get('changed_since_full',0)} zur Full-Baseline")
         else:
             st.caption(f"Full: {info.get('pages',0)} Seiten · {info.get('documents',0)} Dokumente · {info.get('discovered',0)} URLs gefunden")
+            if "query_variants" in info:
+                st.caption(f"Query-Varianten: {info.get('query_variants',0):,} · "
+                           f"robots.txt blockiert: {info.get('robots_excluded',0):,}"
+                           .replace(",", "'"))
             if info.get("limit_warnings"):
                 st.warning("Schutzlimit erreicht: " + " · ".join(info["limit_warnings"]))
     if not found:
@@ -695,6 +711,33 @@ if current_page == "Snapshot-Verwaltung":
                     if quality[9]:
                         st.warning("Erfassungsgrenze erreicht – Snapshot unvollständig.")
                     st.caption(f"Inhaltsduplikate: {quality[8]} · Fehler: {quality[7]}")
+                discovery_info=get_discovery_stats(selected)
+                if discovery_info:
+                    st.markdown("**Warum werden so viele URLs erkannt?**")
+                    d1,d2,d3=st.columns(3)
+                    d1.metric("Eindeutige Pfade",discovery_info.get("unique_paths",0))
+                    d2.metric("URLs mit Parametern",discovery_info.get("query_variants",0))
+                    d3.metric("robots.txt blockiert",discovery_info.get("robots_excluded",0))
+                    st.caption("Von robots.txt blockierte Kandidaten werden vor dem "
+                               "Einreihen verworfen. Die Zahlen berücksichtigen "
+                               "neu gestartete Jobs ab dieser Version.")
+                    st.write("Entdeckungsquellen",discovery_info.get("discovered_sources",{}))
+                    top_q=discovery_info.get("top_query_parameters",[])
+                    if top_q:
+                        st.markdown("**Häufigste URL-Parameter**")
+                        st.dataframe([{"Parameter":k,"Vorkommen":count}
+                                      for k,count in top_q],hide_index=True,
+                                      width="stretch")
+                    top_paths=discovery_info.get("top_variant_paths",[])
+                    if top_paths:
+                        st.markdown("**Pfade mit den meisten URL-Varianten**")
+                        st.dataframe([{"Pfad":p,"Varianten":v}
+                                      for p,v in top_paths],hide_index=True,
+                                      width="stretch")
+                    if discovery_info.get("robots_examples"):
+                        with st.expander("Beispiele: durch robots.txt blockierte URLs"):
+                            st.code("\n".join(discovery_info["robots_examples"]),
+                                    language="text")
                 st.write("URL-Quellen",diag["sources"])
                 st.write("Bearbeitungsstatus",diag["statuses"])
                 st.write("Ausschlussgründe",diag["reasons"])
