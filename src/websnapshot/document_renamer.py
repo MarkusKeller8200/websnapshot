@@ -47,7 +47,13 @@ def parse_document_date(value: str | datetime | None) -> datetime | None:
     if not value:
         return None
     try:
-        date = value if isinstance(value,datetime) else parsedate_to_datetime(value)
+        if isinstance(value,datetime):
+            date=value
+        else:
+            try:
+                date=parsedate_to_datetime(value)
+            except (ValueError,TypeError,IndexError):
+                date=datetime.fromisoformat(value.strip().replace("Z","+00:00"))
         if date.tzinfo is None:
             date=date.replace(tzinfo=timezone.utc)
         date=date.astimezone(timezone.utc)
@@ -167,3 +173,38 @@ def unique_name(path: Path) -> Path:
         if not candidate.exists():
             return candidate
         number+=1
+
+
+def file_metadata_dates(path: Path, extension: str) -> list[tuple[str, datetime]]:
+    """Extract embedded timestamps when possible, without trusting them blindly."""
+    output=[]
+    if extension==".pdf":
+        try:
+            from pypdf import PdfReader
+            metadata=PdfReader(str(path),strict=False).metadata
+            if metadata:
+                for label,field in (("PDF Änderungsdatum","modification_date"),
+                                    ("PDF Erstellungsdatum","creation_date")):
+                    value=getattr(metadata,field,None)
+                    parsed=parse_document_date(value)
+                    if parsed:
+                        output.append((label,parsed))
+        except Exception:
+            return output
+    elif extension==".docx":
+        try:
+            from zipfile import ZipFile
+            from xml.etree import ElementTree as ET
+            with ZipFile(path) as archive:
+                if "docProps/core.xml" in archive.namelist() and archive.getinfo("docProps/core.xml").file_size < 100_000:
+                    xml=archive.read("docProps/core.xml")
+                    root=ET.fromstring(xml)
+                    for label,tag in (("DOCX Änderungsdatum","modified"),
+                                      ("DOCX Erstellungsdatum","created")):
+                        item=next((node for node in root.iter() if node.tag.rsplit("}",1)[-1]==tag),None)
+                        parsed=parse_document_date(item.text) if item is not None else None
+                        if parsed:
+                            output.append((label,parsed))
+        except Exception:
+            return output
+    return output
