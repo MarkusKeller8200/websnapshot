@@ -2,6 +2,18 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.6 – Discovery, Timeout und Performance-Messung (14.10.2026)
+- Discovery-Limit global einstellbar, Standard **200'000 URLs** (bisher 10'000); Besuchslimit **2'000 URLs** (bisher 1'000).
+- Seiten-Timeout konfigurierbar, standardmässig **3 Sekunden** für Verbindungsaufbau und ausbleibende HTTP-Daten; Browsernavigation erhält dieselbe Wartezeitgrenze.
+- Sichere statische HTTP-Parallelität (Standard 3, maximal 4), mit eigener wiederverwendbarer Session pro Worker; Playwright bleibt sequentiell.
+- Dauerstatistiken nach `perf_counter`: Anzahl, Minimum, Mittelwert, Maximum und Gesamtdauer für robots.txt, Sitemaps, Discovery, Links, Seitenabrufe und Persistierung.
+- Live-Performance während des Jobs und dauerhaft in SQLite beim Snapshot; Timeout-Zähler und langsamste URL pro Phase.
+- Separate Erfassung von statischen HTTP-Seiten sowie im Browser erkannten statischen, dynamischen und nicht klassifizierbaren Seiten. Dynamik ist eine **Heuristik**, kein Nachweis.
+- Geringerer SQLite-Fortschrittsaufwand (zeitlich gebündelt) und keine quadratische wiederholte Delta-Hashberechnung.
+- Ergänzende Tests für Limits, Timeout, Zeitstatistik, echte begrenzte Parallelität und Seitenarten.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.6.md)
+
 ## v0.6.5 – Vereinheitlichte Oberfläche, Dokument-Renamer und Einstellungen (14.10.2026)
 - Abgeschnittenen WebSnapshot-Titel korrigiert und Navigation vollständig in den linken, einklappbaren Menübaum überführt; Schaltflächen, Symbole und Beschriftungen linksbündig.
 - Snapshot starten, Snapshot-Verwaltung, Änderungsvergleich, Dokumentdownload und Job-Protokolle als eigenständige Ansichten aufgeteilt.
