@@ -45,3 +45,19 @@ def widths(rows: Sequence[Mapping]) -> dict[str,int]:
     if not rows:
         return {}
     return {name:column_width(rows,name) for name in rows[0]}
+
+
+def streamlit_columns(rows: Sequence[Mapping], *, links=(), checks=()) -> dict:
+    """Preserve dataframe column types; set widths only, plus explicit links."""
+    import streamlit as st
+    links=set(links)
+    checks=set(checks)
+    result={}
+    for name,value in widths(rows).items():
+        if name in links:
+            result[name]=st.column_config.LinkColumn(name,width=value)
+        elif name in checks:
+            result[name]=st.column_config.CheckboxColumn(name,width=value)
+        else:
+            result[name]=st.column_config.Column(name,width=value)
+    return result
