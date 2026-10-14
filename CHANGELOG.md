@@ -2,6 +2,14 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.17 – Partial-Snapshot-Fehler behoben (14.10.2026)
+- Fehler beim Erstellen von Partial-Snapshots behoben: `cannot access local variable 'kind' where it is not associated with a value`.
+- Verwechslung des HTTP-Inhaltstyps mit der Snapshot-Typ-Funktion durch eindeutige Bezeichner `content_type` und `snapshot_kind_for_run` verhindert.
+- Integrationstest für **Full → Partial → Partial** mit Baseline-Verkettung, Inhaltsänderungen und geerbten Seiten ergänzt.
+- Keine Migration und keine Änderung vorhandener Snapshot-Daten erforderlich.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.17.md)
+
 ## v0.6.16 – Auto-Size für sämtliche Tabellenspalten (14.10.2026)
 - Alle Tabellenspalten werden beim Anzeigen inhaltsabhängig dimensioniert – **einschliesslich der jeweils letzten Spalte**.
 - Einheitliche Spaltenbreiten in Dashboard, Snapshots, Crawl-Diagnose, Dokumentenlisten, Fundstellen und beiden Sitemap-Ansichten.
