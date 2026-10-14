@@ -6,6 +6,8 @@ from pathlib import Path
 import json
 import sqlite3
 import threading
+import traceback
+from .job_logging import write as log_write
 from .core import DATA, database
 from .inventory import discover_and_snapshot
 from .settings import get as get_capture
@@ -29,6 +31,10 @@ def _connect(data: Path):
         run_id INTEGER
     )""")
     columns={r[1] for r in connection.execute("PRAGMA table_info(jobs)")}
+    if "last_activity_at" not in columns:
+        connection.execute("ALTER TABLE jobs ADD COLUMN last_activity_at TEXT")
+    if "last_progress_at" not in columns:
+        connection.execute("ALTER TABLE jobs ADD COLUMN last_progress_at TEXT")
     if "cancel_requested" not in columns:
         connection.execute("ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0")
     connection.execute("""CREATE UNIQUE INDEX IF NOT EXISTS one_active_job_per_site
@@ -60,24 +66,39 @@ def launch(site_id: int, url: str, limit: int, data: Path = DATA, snapshot_kind:
             existing = db.execute("""SELECT id FROM jobs WHERE site_id=?
                 AND state IN ('queued','running')""",(site_id,)).fetchone()
             return False, existing[0]
+    log_write(job_id,"INFO",f"Job eingereiht: {url}; Typ={snapshot_kind}; Limit={limit}",data)
     _executor.submit(_work,job_id,site_id,url,limit,data,snapshot_kind)
     return True, job_id
 
 
 def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_kind: str) -> None:
+    last_logged={"visited":-1,"phase":None}
     def progress(**update):
+        stamp=datetime.now(timezone.utc).isoformat()
         with _connect(data) as db:
             cancelled=db.execute("SELECT cancel_requested FROM jobs WHERE id=?",(job_id,)).fetchone()
             if cancelled and cancelled[0]:
                 raise JobCancelled("Vom Benutzer abgebrochen")
             old=db.execute("SELECT progress FROM jobs WHERE id=?",(job_id,)).fetchone()
             combined={**json.loads(old[0] or "{}"),**update}
-            db.execute("UPDATE jobs SET progress=? WHERE id=?",
-                       (json.dumps(combined,ensure_ascii=False),job_id))
+            db.execute("UPDATE jobs SET progress=?,last_activity_at=?,last_progress_at=? WHERE id=?",
+                       (json.dumps(combined,ensure_ascii=False),stamp,stamp,job_id))
             db.commit()
+        phase=update.get("phase")
+        visited=update.get("visited",-1)
+        if phase!=last_logged["phase"] or (isinstance(visited,int) and visited-last_logged["visited"]>=25):
+            log_write(job_id,"INFO",f"Phase={phase}; besucht={visited}; entdeckt={update.get('discovered')}; Seiten={update.get('pages')}; Dokumente={update.get('documents')}",data)
+            last_logged.update(phase=phase,visited=visited)
+        for warning in update.get("limit_warnings",[]):
+            if warning not in reported_warnings:
+                reported_warnings.add(warning)
+                log_write(job_id,"WARNING",warning,data)
+    reported_warnings=set()
     try:
+        log_write(job_id,"INFO","Worker gestartet",data)
         with _connect(data) as db:
-            db.execute("UPDATE jobs SET state='running' WHERE id=?", (job_id,))
+            db.execute("UPDATE jobs SET state='running',last_activity_at=? WHERE id=?",
+                       (datetime.now(timezone.utc).isoformat(),job_id))
             db.commit()
         run_id, result = discover_and_snapshot(site_id,url,limit,data,progress=progress,snapshot_kind=snapshot_kind)
         with _connect(data) as db:
@@ -96,12 +117,17 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
                  f"{result['pages']} Seiten, {result['documents']} Dokumente",
                  json.dumps(final,ensure_ascii=False),job_id))
             db.commit()
+        for issue in result.get("errors",[]):
+            log_write(job_id,"WARNING",issue,data)
+        log_write(job_id,"INFO",f"Abgeschlossen: Snapshot #{run_id}, {result['pages']} Seiten, {result['documents']} Dokumente",data)
     except JobCancelled as exc:
+        log_write(job_id,"WARNING",str(exc),data)
         with _connect(data) as db:
             db.execute("UPDATE jobs SET state='cancelled',ended_at=?,message=? WHERE id=?",
                        (datetime.now(timezone.utc).isoformat(),str(exc),job_id))
             db.commit()
     except Exception as exc:
+        log_write(job_id,"ERROR",traceback.format_exc(),data)
         with _connect(data) as db:
             db.execute("""UPDATE jobs SET state='failed', ended_at=?,
                 message=? WHERE id=?""",
@@ -143,7 +169,12 @@ def request_cancel(site_id: int, data: Path = DATA) -> bool:
         cur=db.execute("""UPDATE jobs SET cancel_requested=1 WHERE site_id=?
             AND state IN ('queued','running')""",(site_id,))
         db.commit()
-        return cur.rowcount>0
+        requested=cur.rowcount>0
+    if requested:
+        job=latest(site_id,data)
+        if job:
+            log_write(job["id"],"WARNING","Abbruch angefordert",data)
+    return requested
 
 
 def snapshot_job(run_id: int, data: Path = DATA) -> dict | None:
