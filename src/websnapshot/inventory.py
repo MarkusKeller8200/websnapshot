@@ -25,6 +25,8 @@ from .crawl_scope import eligible_link, within_scope, is_document, effective_sco
 from .global_settings import get as get_global
 from .performance import Timings, save as save_performance
 from .link_exclusions import LinkExclusionJournal
+from .url_exclusions import parse_excludes, excluded_by
+from .path_exclusion_audit import ExclusionStats
 from hashlib import sha256
 from .diagnostics import canonical, path_key, MAX_DISCOVERED, MAX_PER_PATH, MAX_PER_PAGE, record, record_quality, duplicate_groups
 
@@ -72,7 +74,10 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     from time import monotonic
     beginning = monotonic()
     config = dict(config) if config is not None else get_global(data)
-    scope_mode = config.get("crawl_scope",get_capture(site_id,data)["crawl_scope"])
+    site_profile=get_capture(site_id,data)
+    scope_mode=config.get("crawl_scope",site_profile["crawl_scope"])
+    exclude_paths=parse_excludes(config.get("exclude_paths",site_profile["exclude_paths"]))
+    excluded_stats=ExclusionStats(exclude_paths)
     effective_mode = effective_scope(start,scope_mode)
     discovery_limit = int(config.get("discovery_limit",200000))
     page_timeout = float(config.get("page_timeout",3.0))
@@ -97,6 +102,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                 page_timeout=page_timeout, http_workers=http_workers,
                 links_per_page=links_per_page,
                 crawl_scope=effective_mode,scope_excluded=scope_excluded,
+                exclude_paths=exclude_paths, path_excluded=excluded_stats.total,
                 performance=timings.summary(),
                 static_pages=static_pages,
                 browser_static_pages=browser_static_pages,
@@ -117,6 +123,8 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     if snapshot_kind not in ('full','partial'):
         raise ValueError('Ungültiger Snapshottyp')
     start = normalize_url(start)
+    if excluded_by(start,exclude_paths):
+        raise ValueError("Die Startadresse ist durch die Ausschlussliste gesperrt.")
     check_public(start)
     host = urlsplit(start).netloc
     origin = urlsplit(start).scheme + "://" + host
@@ -153,6 +161,20 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
             raise ValueError("Für diesen Unterbereich zuerst einen neuen Full-Snapshot "
                              "erstellen: Der Vorgänger hat keinen bestätigten "
                              "passenden Erfassungsbereich.")
+    if parent_id is not None and exclude_paths:
+        # A delta inherits old pages; it cannot remove previously included
+        # pages that a newly added path rule would exclude.
+        with sqlite3.connect(database(data)) as db:
+            has_jobs=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='jobs'").fetchone()
+            prior_row=db.execute("SELECT progress FROM jobs WHERE run_id=? ORDER BY id DESC LIMIT 1",
+                                 (parent_id,)).fetchone() if has_jobs else None
+        previous_rules=parse_excludes(
+            json.loads(prior_row[0] or "{}").get("exclude_paths",[])
+            if prior_row else [])
+        if previous_rules!=exclude_paths:
+            raise ValueError("Ausschlussliste geändert: Bitte zuerst einen neuen "
+                             "Full-Snapshot erstellen, damit keine ausgeschlossenen "
+                             "Seiten aus dem alten Snapshot geerbt werden.")
     baseline = effective_pages(parent_id,data) if parent_id else {}
     full_id = parent_id
     if parent_id:
@@ -205,6 +227,10 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
             if not (eligible_link(link,start,effective_mode,directly_linked=direct) or related):
                 if urlsplit(link).netloc==host and not within_scope(link,start,effective_mode):
                     scope_excluded+=1
+                return
+            excluded_rule=excluded_by(link,exclude_paths)
+            if excluded_rule:
+                excluded_stats.record(excluded_rule,link)
                 return
             if is_document(link) and source_page:
                 document_references.setdefault(link,set()).add((source_page,source))
@@ -266,6 +292,10 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
             if urlsplit(sm).netloc != host or sm in sitemap_seen:
                 continue
             sitemap_seen.add(sm)
+            excluded_rule=excluded_by(sm,exclude_paths)
+            if excluded_rule:
+                excluded_stats.record(excluded_rule,sm)
+                continue
             rawxml, _ = _fetch(session, sm, 4_000_000, page_timeout)
             root = ET.fromstring(rawxml)
             for node in root.iter():
@@ -281,7 +311,11 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     # Avoid enqueuing another department from a domain-wide
                     # sitemap; only pages/docs within the logical subtree.
                     if within_scope(link,start,effective_mode):
-                        sitemap_urls.append((link,sm))
+                        excluded_rule=excluded_by(link,exclude_paths)
+                        if excluded_rule:
+                            excluded_stats.record(excluded_rule,link)
+                        else:
+                            sitemap_urls.append((link,sm))
                     else:
                         scope_excluded+=1
         except (requests.RequestException, ValueError, ET.ParseError, OSError) as exc:
@@ -317,6 +351,10 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
             batch=[]
             while queue and len(visited)<limit and len(batch)<(1 if renderer else http_workers):
                 url=queue.popleft()
+                excluded_rule=excluded_by(url,exclude_paths)
+                if excluded_rule:
+                    excluded_stats.record(excluded_rule,url)
+                    continue
                 if url in visited:
                     continue
                 visited.add(url)
@@ -452,6 +490,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     remaining, len(sitemap_seen)))
     record(run_id,url_records,data)
     link_audit.persist(run_id,data)
+    excluded_stats.save(run_id,data)
     record_quality(run_id,dict(discovered=len(found),visited=len(visited),archived=len(pages),
         documents=len(docs),pending=remaining,skipped=skipped,errors=len(errors),
         duplicate_content=duplicate_groups(pages),truncated=int(truncated or remaining>0),
@@ -465,6 +504,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     emit(phase="Fertig",changed=changed,percent=100 if parent_id and remaining == 0 else round(100*len(visited)/max(len(baseline),1),1) if parent_id else None)
     return run_id, {"snapshot_kind":snapshot_kind, "full_baseline_id":full_id,
                     "crawl_scope":effective_mode,"scope_excluded":scope_excluded,
+                    "exclude_paths":exclude_paths,"path_excluded":excluded_stats.total,
                     "changed_since_full":changed_from_full,
                     "discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
