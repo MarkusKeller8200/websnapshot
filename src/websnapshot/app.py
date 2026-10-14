@@ -376,7 +376,7 @@ if current_page == "Snapshot starten":
                     format_func=lambda value:"Full / Baseline" if value=="full" else "Partial / Delta",
                     horizontal=True,key=f"snapshot_kind_{site_id}")
             with b:
-                limit=st.number_input("Maximal besuchte URLs",10,20000,int(global_config["visit_limit"]),step=100,
+                limit=st.number_input("Maximal besuchte URLs",10,100000,int(global_config["visit_limit"]),step=100,
                                       key=f"snapshot_limit_{site_id}")
             st.caption(f"Modus: {MODES[capture['mode']]} · "
                        f"Discovery-Limit: {global_config['discovery_limit']:,} · "
@@ -863,7 +863,7 @@ if current_page == "Einstellungen":
         st.divider()
         st.markdown("**Standardwerte für neue Erfassungen und Ansichten**")
         default_limit=st.number_input("Standard-Besuchslimit",
-            min_value=10,max_value=20000,
+            min_value=10,max_value=100000,
             value=int(global_config["visit_limit"]),step=100)
         st.markdown("**Crawl-Grenzen und Geschwindigkeit**")
         discovery_limit=st.number_input("Discovery-Limit – maximal entdeckte URLs",
@@ -874,7 +874,7 @@ if current_page == "Einstellungen":
             value=float(global_config.get("page_timeout",3.0)),
             step=0.5)
         http_workers=st.slider("Parallele statische HTTP-Aufrufe",
-            min_value=1,max_value=4,
+            min_value=1,max_value=10,
             value=int(global_config.get("http_workers",3)))
         st.caption("Der HTTP-Timeout begrenzt Verbindungsaufbau und Phasen ohne "
                    "empfangene Daten, nicht zwingend die Gesamtdauer einer Antwort. "
