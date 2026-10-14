@@ -197,7 +197,9 @@ def job_controls(site_id, url, limit, snap_kind):
         perf=info.get("performance") or {}
         if perf:
             with st.expander("⏱️ Antwort- und Verarbeitungszeiten (live)",expanded=False):
-                names={"discovery_initial":"Sitemaps / initiale Discovery",
+                names={"discovery_initial":"Gesamte initiale Discovery",
+                       "robots_fetch":"robots.txt abrufen",
+                       "sitemap_fetch":"Sitemaps abrufen",
                        "discovery_links":"Link-Discovery",
                        "page_fetch":"Seitenabrufe",
                        "snapshot_save":"Snapshot speichern",
@@ -474,6 +476,8 @@ if current_page == "Snapshot-Verwaltung":
                     st.info("Für diesen älteren Snapshot sind keine Zeitmessungen gespeichert.")
                 else:
                     names={"discovery_initial":"Initiale Discovery",
+                        "robots_fetch":"robots.txt abrufen",
+                        "sitemap_fetch":"Sitemaps abrufen",
                         "discovery_links":"Link-Discovery","page_fetch":"Seitenabrufe",
                         "snapshot_save":"Snapshot speichern",
                         "document_metadata":"Dokument-Metadaten",
