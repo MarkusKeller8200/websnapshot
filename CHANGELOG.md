@@ -7,7 +7,8 @@ Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unt
 - Alle Snapshot-Dropdowns verwenden `Symbol - YYYY.MM.DD HH:MM:SS - ID`, auch bei älteren gespeicherten Snapshots.
 - Einheitliches Auswahlformat für Snapshot-Verwaltung, Änderungsvergleich (Vorher/Nachher), Dokumentinventar und Sitemap.
 - Die numerische ID bleibt unverändert; vorhandene Vergleiche und Inventare bleiben kompatibel.
-- Regressionstests für Typ-Icons, formatierte Zeitstempel und alle fünf Dropdowns.
+- Sitemap-Baumansicht: zusätzlicher Button **«🗂️ Alle Ebenen»**, um alle Ordner mit einem Klick aufzuklappen (weiterhin höchstens 2'500 sichtbare Zeilen).
+- Regressionstests für Typ-Icons, formatierte Zeitstempel, alle fünf Dropdowns und die neue Baumansicht.
 
 [Vollständige Release-Notizen](docs/releases/v0.6.15.md)
 
