@@ -30,6 +30,9 @@ WebSnapshot 0.4.0 ist eine lokal betriebene Python-Anwendung zur manuellen Erfas
 | Funktion | Stand |
 | --- | --- |
 | Mehrere Websites verwalten | Implementiert |
+| Full- und Partial-/Delta-Snapshots | Implementiert |
+| Einzelne Full-Snapshots ohne abhängige Deltas löschen | Implementiert |
+| Sitemap als kompakte Tabelle mit Originalseiten-Links | Implementiert |
 | Interne Links rekursiv sowie Sitemaps durchsuchen | Implementiert, mit Sicherheitslimits |
 | Snapshots manuell erstellen | Implementiert |
 | Historische Text-Snapshots in SQLite speichern | Implementiert |
@@ -38,7 +41,7 @@ WebSnapshot 0.4.0 ist eine lokal betriebene Python-Anwendung zur manuellen Erfas
 | HTML-Änderungsbericht herunterladen | Implementiert |
 | PDF- und Word-Dokumentlinks inventarisieren | Implementiert; ohne Inhaltsdownload |\n| PDF- und Word-Dokumentinhalte auswerten | Geplant |\n| Dashboard mit Website-, Snapshot- und Speicherkennzahlen | Implementiert |\n| Websites hinzufügen und entfernen | Implementiert |\n| Warnung bei ältesten Snapshots über 30 Tagen | Implementiert |\n| GitHub-Update über die Anwendung | Implementiert (Neuladen; kein garantierter Prozessneustart) |\n| Live-Status mit Laufzeit, Seiten- und Dokumentzählern | Implementiert |\n| Hintergrund-Snapshot mit exklusiver Job-Sperre je Website | Implementiert |\n| Navigierbare Sitemap mit Links zu Originalseiten | Implementiert (URL-Pfadgruppen) |\n| Dokumentliste mit selektivem Download | Implementiert für PDF, DOC und DOCX |\n| Dokumentänderungen erkennen | ETag / Last-Modified / Dateigrösse; kein Inhaltsvergleich ohne Download |
 | Screenshots | Geplant |
-| Dynamische JavaScript-Seiten mit Playwright erfassen | Geplant |
+| Dynamische JavaScript-Seiten mit Playwright erfassen | Verfügbar (Browsermodus, Prototyp) |
 | KI-Zusammenfassungen und Relevanzbewertung | Geplant |
 | Automatisch nach Zeitplan scannen | Optional später |
 
@@ -166,3 +169,9 @@ Viele moderne Websites rendern Inhalte erst im Browser über JavaScript. Die bis
 
 - **0.5.0 – Browsermodus vorbereiten:** Website-spezifische Wahl des Erfassungsmodus (statisch / Browser / später automatisch), Benutzeroberfläche und Konfiguration. Der Browsermodus ist bis zur Integration einer Browser-Engine noch nicht ausführbar; es erfolgt **kein stillschweigender Rückfall** auf statische Erfassung.
 - **0.6.0 – Playwright integrieren:** Browsermodus mit Chromium tatsächlich ausführen, JavaScript-Inhalte und dynamisch erzeugte Links erfassen, Fortschritt/Fehlerstatus in bestehende Hintergrund-Jobs integrieren. Erst danach automatisches Umschalten prüfen.
+
+## Version 0.6.0
+
+Neu sind Playwright-/Chromium-Erfassung für dynamische Webseiten, Full-Baselines und Partial-/Delta-Snapshots mit Wiederverwendung der URL-Liste, sicheres Löschen nicht benötigter Full-Snapshots sowie eine tabellarische Sitemap mit Browser-Links. Partial-Snapshots speichern nur Änderungen an bekannten Seiten und benötigen ihre Baseline. Die Löschfunktion verhindert das Entfernen von Baselines mit abhängigen Deltas und das einzelne Löschen von Delta-Snapshots. Details und Grenzen stehen in [Version 0.6.0](docs/VERSION_0.6.0.md).
+
+**Chromium einmalig installieren:** Nach `git pull` und `pip install -e ".[dev]"` in der Projektumgebung zusätzlich `python -m playwright install chromium` ausführen. Unter Windows mit `.venv313\\Scripts\\python.exe -m playwright install chromium`.
