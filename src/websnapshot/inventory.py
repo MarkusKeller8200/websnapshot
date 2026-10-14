@@ -70,7 +70,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     config = dict(config) if config is not None else get_global(data)
     discovery_limit = int(config.get("discovery_limit",200000))
     page_timeout = float(config.get("page_timeout",3.0))
-    http_workers = max(1,min(4,int(config.get("http_workers",3))))
+    http_workers = max(1,min(10,int(config.get("http_workers",3))))
     timings = Timings()
     static_pages = browser_static_pages = browser_dynamic_pages = browser_unknown_pages = timeouts = 0
     changed_count = changed_from_full = 0
