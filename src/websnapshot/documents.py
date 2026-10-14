@@ -34,6 +34,43 @@ def init(data: Path = DATA) -> None:
                 db.execute(f"ALTER TABLE downloads ADD COLUMN {column} {definition}")
 
 
+def previous_document_metadata(parent_id: int | None,
+                               data: Path = DATA) -> dict[str, tuple]:
+    """Find documents in the closest ancestor that actually inventoried files.
+
+    Previous releases wrote no document rows for partial snapshots. Walk the
+    actual parent chain rather than using an unrelated earlier site run.
+    """
+    init(data)
+    with sqlite3.connect(database(data)) as db:
+        seen=set()
+        cursor=parent_id
+        while cursor is not None:
+            if cursor in seen:
+                raise ValueError("Snapshot-Abhängigkeitszyklus")
+            seen.add(cursor)
+            records=db.execute(
+                "SELECT url,etag,last_modified,length FROM documents WHERE run_id=?",
+                (cursor,)).fetchall()
+            if records:
+                return {u:(etag,modified,length)
+                        for u,etag,modified,length in records}
+            parent=db.execute(
+                "SELECT parent_id FROM snapshot_meta WHERE run_id=?",(cursor,)
+            ).fetchone()
+            cursor=parent[0] if parent else None
+    return {}
+
+
+def status_summary(run_id: int, data: Path = DATA) -> dict[str,int]:
+    """Counts for the completed snapshot, including non-200 HEAD responses."""
+    init(data)
+    with sqlite3.connect(database(data)) as db:
+        return {status:count for status,count in db.execute(
+            "SELECT status,COUNT(*) FROM documents WHERE run_id=? GROUP BY status",
+            (run_id,))}
+
+
 def document_status(previous: tuple | None, current: tuple) -> str:
     if previous is None:
         return "Neu gefunden"
@@ -53,40 +90,58 @@ def document_status(previous: tuple | None, current: tuple) -> str:
 
 def inventory_documents(run_id: int, site_id: int, urls: set[str],
                         session: requests.Session, data: Path = DATA,
-                        progress=None) -> None:
-    """Only HEAD requests, never download document bodies during snapshots."""
+                        progress=None, *, parent_id: int | None = None,
+                        allowed=None) -> None:
+    """Recheck all supplied URLs via HEAD only; never fetch document bodies.
+
+    Partial snapshots compare against the direct parent chain, including older
+    partial runs with no document entries. HEAD failures are reported rather
+    than accidentally calling them unchanged or newly discovered.
+    """
     init(data)
-    with sqlite3.connect(database(data)) as db:
-        prev_run = db.execute("""SELECT d.run_id FROM documents d
-          JOIN runs r ON r.id=d.run_id WHERE r.site_id=? AND d.run_id<?
-          ORDER BY d.run_id DESC LIMIT 1""", (site_id, run_id)).fetchone()
-        prev = {}
-        if prev_run:
-            prev = {u:(e,m,l) for u,e,m,l in db.execute(
-                "SELECT url,etag,last_modified,length FROM documents WHERE run_id=?",
-                prev_run)}
-    rows = []
-    for index, url in enumerate(sorted(urls), 1):
-        etag = modified = length = None
+    if parent_id is None:
+        with sqlite3.connect(database(data)) as db:
+            previous=db.execute(
+                """SELECT d.run_id FROM documents d
+                   JOIN runs r ON r.id=d.run_id
+                   WHERE r.site_id=? AND d.run_id<?
+                   ORDER BY d.run_id DESC LIMIT 1""",
+                (site_id,run_id)).fetchone()
+        parent_id=previous[0] if previous else None
+    previous_metadata=previous_document_metadata(parent_id,data)
+    rows=[]
+    for index,url in enumerate(sorted(urls),1):
+        etag=modified=length=None
+        status=None
         try:
-            url = normalize_url(url)
-            check_public(url)
-            with session.head(url, timeout=(5,10), allow_redirects=False) as res:
-                if res.is_redirect:
-                    raise ValueError("Weiterleitung nicht verfolgt")
-                if res.ok:
-                    etag = res.headers.get("ETag")
-                    modified = res.headers.get("Last-Modified")
-                    length = res.headers.get("Content-Length")
-        except (requests.RequestException, ValueError, OSError):
-            pass
-        current = (etag, modified, length)
-        rows.append((run_id,url,etag,modified,length,document_status(prev.get(url),current)))
+            url=normalize_url(url)
+            if allowed is not None and not allowed(url):
+                status="Nicht geprüft (robots.txt)"
+            else:
+                check_public(url)
+                with session.head(url,timeout=(5,10),
+                                  allow_redirects=False) as res:
+                    if res.is_redirect:
+                        status=f"Weiterleitung (HTTP {res.status_code})"
+                    elif not res.ok:
+                        status=f"Nicht erreichbar (HTTP {res.status_code})"
+                    else:
+                        etag=res.headers.get("ETag")
+                        modified=res.headers.get("Last-Modified")
+                        length=res.headers.get("Content-Length")
+        except requests.Timeout:
+            status="Prüfung fehlgeschlagen (Timeout)"
+        except (requests.RequestException,ValueError,OSError):
+            status="Prüfung fehlgeschlagen"
+        if status is None:
+            status=document_status(previous_metadata.get(url),
+                                   (etag,modified,length))
+        rows.append((run_id,url,etag,modified,length,status))
         if progress:
-            progress(doc_checked=index)
+            progress(doc_checked=index,doc_total=len(urls))
     with sqlite3.connect(database(data)) as db:
         db.executemany("""INSERT OR REPLACE INTO documents
-          (run_id,url,etag,last_modified,length,status) VALUES(?,?,?,?,?,?)""", rows)
+          (run_id,url,etag,last_modified,length,status) VALUES(?,?,?,?,?,?)""",rows)
 
 
 def list_documents(run_id: int, data: Path = DATA) -> list[dict]:
