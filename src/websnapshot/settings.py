@@ -1,6 +1,6 @@
 """Website-spezifische Erfassungsprofile für WebSnapshot 0.5.0.
 
-Der Browsermodus ist für 0.6.0 reserviert und wird hier nicht ausgeführt.
+Der Browsermodus verwendet Playwright und Chromium.
 """
 from pathlib import Path
 import sqlite3
@@ -8,7 +8,7 @@ from .core import DATA, database
 
 STATIC = "static"
 BROWSER = "browser"
-MODES = {STATIC: "Statisch (verfügbar)", BROWSER: "Browser / Playwright (ab 0.6.0)"}
+MODES = {STATIC: "Statisch (verfügbar)", BROWSER: "Browser / Playwright (Chromium)"}
 
 
 def init(data: Path = DATA) -> None:
@@ -49,6 +49,5 @@ def set_settings(site_id: int, mode: str, wait_selector: str = "",
 
 def require_available(site_id: int, data: Path = DATA) -> None:
     mode = get(site_id,data)["mode"]
-    if mode != STATIC:
-        raise ValueError("Browsermodus ist vorbereitet, aber erst ab Version 0.6.0 ausführbar. "
-                         "Bitte den statischen Modus auswählen.")
+    if mode not in MODES:
+        raise ValueError("Ungültiger Erfassungsmodus")
