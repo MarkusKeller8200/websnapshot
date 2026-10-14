@@ -16,7 +16,7 @@ from websnapshot.jobs import launch, latest, running, recover_interrupted, reque
 from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
 from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
-from websnapshot.versions import kind, effective_pages, remove_snapshot
+from websnapshot.versions import kind, effective_pages, effective_page_metadata, remove_snapshot
 from urllib.parse import urlsplit
 from hashlib import sha1
 from websnapshot.document_selection import filter_documents, bulk_selection, merge_visible
@@ -25,6 +25,8 @@ from websnapshot.document_selection import filter_documents, bulk_selection, mer
 from websnapshot.global_settings import get as get_global, save as save_global, VALID_HEIGHTS
 from websnapshot.performance import get as get_performance
 from websnapshot.table_layout import column_width, streamlit_columns
+from websnapshot.sitemap_view import (tree_from_pages,visible_tree_rows,all_parent_ids,
+    filtered_page_rows,export_csv,export_xlsx)
 from websnapshot.ui_diff import comparison_html
 from websnapshot.document_renamer import (get_profile, set_profile, RENAMED, ORIGINAL,
     CASE_MODES, filename_from_headers, build_filename, choose_date)
@@ -759,46 +761,153 @@ if current_page == "Dokumente":
                         st.error(str(exc))
 
 if current_page == "Sitemap":
-    st.subheader("Sitemap / erfasste Seiten")
-    options = dict(sites())
-    if not options:
+    st.subheader("🗺️ Sitemap / erfasste Seiten")
+    if active_site_id not in site_options:
         st.info("Bitte zuerst eine Website hinzufügen.")
     else:
-        chosen = active_site_id
-        st.caption(f"🌐 {options[chosen]} · Website wechseln: linke Seitenleiste")
-        map_history = runs(chosen)
-        if not map_history:
-            st.info("Noch kein Snapshot erfasst.")
+        site_id=active_site_id
+        st.caption(f"🌐 {site_options[site_id]} · Website wechseln: linke Seitenleiste")
+        history=runs(site_id)
+        if not history:
+            st.info("Für diese Website existiert noch kein Snapshot.")
         else:
-            selected_run = st.selectbox("Snapshot", [r[0] for r in map_history], key="map_run")
-            import sqlite3
-            from websnapshot.core import database
-            pages = effective_pages(selected_run)
-            top_left, top_right = st.columns([3, 2], vertical_alignment="bottom")
-            top_left.caption(f"{len(pages)} HTML-Seiten · inklusive geerbter Baseline")
-            with top_right:
-                table_height = st.select_slider("Tabellenhöhe", options=[350, 550, 800, 1100, 1500],
-                                                value=int(global_config["sitemap_height"]), format_func=lambda x: f"{x} px",
-                                                key="sitemap_height")
-            table = [{"Pfad":urlsplit(url).path or "/",
-                      "Titel":title,"URL":url,"Öffnen":url,
-                      "Zeichen":len(content)}
-                     for url,(title,content,digest) in sorted(pages.items())]
-            st.dataframe(
-                table, hide_index=True, width="stretch", height=table_height,
-                row_height=32,
-                column_order=["Pfad", "Titel", "Zeichen", "Öffnen", "URL"],
-                column_config={
-                    "Pfad":st.column_config.TextColumn("Pfad",width=column_width(table,"Pfad")),
-                    "Titel":st.column_config.TextColumn("Seitentitel",width=column_width(table,"Titel")),
-                    "Zeichen":st.column_config.NumberColumn("Zeichen",format="%d",
-                        width=column_width(table,"Zeichen")),
-                    "Öffnen":st.column_config.LinkColumn("Original",display_text="Öffnen ↗",
-                        width=108),
-                    "URL":st.column_config.TextColumn("URL",width=column_width(table,"URL"))
-                })
-            st.caption("Die Tabelle nutzt die ganze Seitenbreite. Über das Symbol rechts oben "
-                       "in der Tabelle kannst du die Vollbildansicht öffnen.")
+            selected_run=st.selectbox("Snapshot",
+                [r[0] for r in history],key=f"sitemap_run_{site_id}",
+                format_func=lambda i:f"Snapshot #{i}")
+            # Read URLs/titles/lengths from SQLite, not potentially huge HTML bodies.
+            table=effective_page_metadata(selected_run)
+            tools_left,tools_right=st.columns([3,2],vertical_alignment="bottom")
+            with tools_left:
+                view_mode=st.radio("Darstellung",["Verzeichnisbaum","Flache Tabelle"],
+                    key=f"sitemap_mode_{site_id}",horizontal=True)
+            with tools_right:
+                table_height=st.select_slider("Tabellenhöhe",
+                    options=[350,550,800,1100,1500],
+                    value=int(global_config["sitemap_height"]),
+                    format_func=lambda x:f"{x} px",key=f"sitemap_height_{site_id}")
+            search=st.text_input("Sitemap durchsuchen",
+                placeholder="Verzeichnis, Pfad, Titel oder URL suchen …",
+                key=f"sitemap_search_{site_id}")
+            filtered=filtered_page_rows(table,search)
+            st.caption(f"**{len(filtered):,} von {len(table):,}** archivierten Seiten "
+                       "· inklusive geerbter Full-Baseline".replace(",", "'"))
+            if view_mode=="Flache Tabelle":
+                st.dataframe(filtered,hide_index=True,width="stretch",
+                    height=table_height,row_height=32,
+                    column_order=["Pfad","Titel","Zeichen","Öffnen","URL"],
+                    column_config={
+                        "Pfad":st.column_config.TextColumn("Pfad",width=column_width(filtered,"Pfad")),
+                        "Titel":st.column_config.TextColumn("Seitentitel",
+                            width=column_width(filtered,"Titel")),
+                        "Zeichen":st.column_config.NumberColumn("Zeichen",format="%d",
+                            width=column_width(filtered,"Zeichen")),
+                        "Öffnen":st.column_config.LinkColumn("Original",
+                            display_text="Öffnen ↗",width=110),
+                        "URL":st.column_config.TextColumn("URL")})
+                st.caption("Die flache Ansicht lässt sich durch Klick auf einen "
+                           "Spaltenkopf beliebig sortieren.")
+            else:
+                tree=tree_from_pages(filtered)
+                expanded_key=f"sitemap_expanded_{site_id}_{selected_run}"
+                version_key=f"sitemap_tree_version_{site_id}_{selected_run}"
+                expanded=set(st.session_state.get(expanded_key,[]))
+                if search.strip():
+                    expanded=all_parent_ids(tree)
+                    st.caption("Beim Suchen werden die Verzeichnisse mit Treffern "
+                               "automatisch aufgeklappt.")
+                tree_a,tree_b=st.columns(2)
+                with tree_a:
+                    if st.button("📂 Erste Ebene aufklappen",
+                                 key=f"tree_first_{site_id}_{selected_run}",
+                                 use_container_width=True,disabled=bool(search.strip())):
+                        expanded|={node["id"] for node in tree["children"].values()
+                                   if node["children"]}
+                        st.session_state[expanded_key]=sorted(expanded)
+                        st.session_state[version_key]=st.session_state.get(version_key,0)+1
+                        st.rerun()
+                with tree_b:
+                    if st.button("📁 Alle Verzeichnisse schliessen",
+                                 key=f"tree_close_{site_id}_{selected_run}",
+                                 use_container_width=True,disabled=bool(search.strip())):
+                        st.session_state[expanded_key]=[]
+                        st.session_state[version_key]=st.session_state.get(version_key,0)+1
+                        st.rerun()
+                rows,node_ids,truncated=visible_tree_rows(tree,expanded,limit=2500)
+                if rows:
+                    revision=st.session_state.get(version_key,0)
+                    filter_token=sha1(search.encode("utf-8")).hexdigest()[:12]
+                    edited=st.data_editor(rows,
+                        key=f"sitemap_tree_{site_id}_{selected_run}_{filter_token}_{revision}",
+                        hide_index=True,width="stretch",height=table_height,
+                        num_rows="fixed",row_height=34,
+                        disabled=["Ebene / Pfad","Seiten","Titel",
+                                  "Zeichen","Öffnen","URL"]+
+                                 (["Aufklappen"] if search.strip() else []),
+                        column_order=["Aufklappen","Ebene / Pfad","Seiten",
+                                      "Titel","Zeichen","Öffnen","URL"],
+                        column_config={
+                            "Aufklappen":st.column_config.CheckboxColumn(
+                                "Aufklappen",width=100,required=True),
+                            "Ebene / Pfad":st.column_config.TextColumn(
+                                "Verzeichnis / Pfad",
+                                width=column_width(rows,"Ebene / Pfad",cap=410)),
+                            "Seiten":st.column_config.NumberColumn("Seiten",
+                                width=column_width(rows,"Seiten")),
+                            "Titel":st.column_config.TextColumn("Seitentitel",
+                                width=column_width(rows,"Titel",cap=370)),
+                            "Zeichen":st.column_config.NumberColumn("Zeichen",
+                                width=column_width(rows,"Zeichen")),
+                            "Öffnen":st.column_config.LinkColumn(
+                                "Original",display_text="Öffnen ↗",width=110),
+                            "URL":st.column_config.TextColumn("URL")})
+                    if not search.strip():
+                        changed=False
+                        for i,row in enumerate(edited):
+                            if row["Aufklappen"]==rows[i]["Aufklappen"]:
+                                continue
+                            node_id=node_ids[i]
+                            if row["Aufklappen"]:
+                                expanded.add(node_id)
+                            else:
+                                expanded.discard(node_id)
+                            changed=True
+                        if changed:
+                            st.session_state[expanded_key]=sorted(expanded)
+                            st.session_state[version_key]=revision+1
+                            st.rerun()
+                else:
+                    st.info("Keine Seiten entsprechen dem Suchbegriff.")
+                if truncated:
+                    st.warning("Die Baumtabelle zeigt höchstens 2'500 geöffnete "
+                               "Einträge gleichzeitig. Weitere Verzeichnisse schliessen "
+                               "oder die Suche verwenden.")
+                st.caption("Zum Öffnen eines Ordners das Kontrollkästchen in der "
+                           "ersten Spalte aktivieren. Eine Seite kann gleichzeitig "
+                           "ein Ordner mit Unterseiten sein.")
+            with st.expander("⬇️ Sitemap als Excel oder CSV exportieren"):
+                st.caption("Exportiert **alle** Seiten des gewählten Snapshots, "
+                           "unabhängig vom aktuellen Suchfilter. "
+                           "Bei grossen Snapshots kann die Erstellung einige Sekunden dauern.")
+                export_key=f"sitemap_export_{site_id}_{selected_run}"
+                if st.button("Exporte vorbereiten",
+                             key=f"prepare_export_{site_id}_{selected_run}"):
+                    with st.spinner(f"{len(table):,} Seiten exportieren …"):
+                        st.session_state[export_key]={
+                            "csv":export_csv(table),
+                            "xlsx":export_xlsx(table)}
+                if export_key in st.session_state:
+                    files=st.session_state[export_key]
+                    c1,c2=st.columns(2)
+                    with c1:
+                        st.download_button("CSV herunterladen",
+                            files["csv"],file_name=f"websnapshot_sitemap_{selected_run}.csv",
+                            mime="text/csv",key=f"sitemap_csv_{selected_run}")
+                    with c2:
+                        st.download_button("Excel (.xlsx) herunterladen",
+                            files["xlsx"],
+                            file_name=f"websnapshot_sitemap_{selected_run}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key=f"sitemap_xlsx_{selected_run}")
 
 
 if current_page == "Job-Protokolle":
