@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "websnapshot"
-version = "0.6.9"
+version = "0.6.10"
 description = "Manual local website snapshots and change reports"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
