@@ -18,6 +18,7 @@ def defaults(data: Path = DATA) -> dict:
         "discovery_limit": 200000,
         "page_timeout": 3.0,
         "http_workers": 3,
+        "links_per_page": 1000,
         "sitemap_height": DEFAULT_SITEMAP_HEIGHT,
     }
 
@@ -64,7 +65,7 @@ def validate_download_directory(value: str) -> Path:
 def save(*, download_directory: str, flat_downloads: bool,
          visit_limit: int, sitemap_height: int, data: Path = DATA,
          discovery_limit: int = 200000, page_timeout: float = 3.0,
-         http_workers: int = 3) -> dict:
+         http_workers: int = 3, links_per_page: int = 1000) -> dict:
     location = validate_download_directory(download_directory)
     if type(flat_downloads) is not bool:
         raise ValueError("Ungültige Auswahl für die Ordnerstruktur.")
@@ -76,6 +77,8 @@ def save(*, download_directory: str, flat_downloads: bool,
         raise ValueError("Seiten-Timeout muss zwischen 1 und 60 Sekunden liegen.")
     if type(http_workers) is not int or not 1 <= http_workers <= 10:
         raise ValueError("Parallelität muss zwischen 1 und 10 gleichzeitigen HTTP-Anfragen liegen.")
+    if type(links_per_page) is not int or not 1 <= links_per_page <= 10000:
+        raise ValueError("Links-pro-Seite-Limit muss zwischen 1 und 10'000 liegen.")
     if sitemap_height not in VALID_HEIGHTS:
         raise ValueError("Ungültige Höhe für die Sitemap-Tabelle.")
     values = {
@@ -85,6 +88,7 @@ def save(*, download_directory: str, flat_downloads: bool,
         "discovery_limit": discovery_limit,
         "page_timeout": float(page_timeout),
         "http_workers": http_workers,
+        "links_per_page": links_per_page,
         "sitemap_height": sitemap_height,
     }
     init(data)
