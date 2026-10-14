@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 import requests
 from bs4 import BeautifulSoup
 from .core import DATA, MAX_BYTES, AGENT, check_public, database, extract, normalize_url, save
+from .documents import inventory_documents
 
 
 def remove_site(site_id: int, delete_history: bool = False, data: Path = DATA) -> None:
@@ -41,11 +42,17 @@ def _fetch(session: requests.Session, url: str, max_bytes: int = MAX_BYTES) -> t
 
 
 def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
-                          data: Path = DATA) -> tuple[int, dict]:
+                          data: Path = DATA, progress=None) -> tuple[int, dict]:
     """Discover sitemap and HTML links; stop at transparent safety limits.
 
     All recorded URLs belong to the same network location, redirects are not followed.
     """
+    from time import monotonic
+    beginning = monotonic()
+    def emit(**extra):
+        if progress:
+            progress(elapsed=round(monotonic()-beginning, 1), pages=len(pages),
+                     documents=len(docs), visited=len(visited), discovered=len(found), **extra)
     start = normalize_url(start)
     check_public(start)
     host = urlsplit(start).netloc
@@ -73,6 +80,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     skipped = 0
     pages = {}
     sitemap_urls = []
+    emit(phase='Sitemaps prüfen')
     if robots_loaded:
         for line in raw.decode("utf-8", "replace").splitlines():
             if line.lower().startswith("sitemap:"):
@@ -104,12 +112,13 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
             queued.add(link)
             queue.append(link)
             found.add(link)
+    emit(phase='Seiten durchsuchen')
     while queue and len(visited) < limit:
         url = queue.popleft()
         if url in visited:
             continue
         visited.add(url)
-        if urlsplit(url).path.lower().endswith((".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx")):
+        if urlsplit(url).path.lower().endswith((".pdf", ".docx", ".doc")):
             docs.add(url)
             continue
         try:
@@ -118,7 +127,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 continue
             body, kind = _fetch(session, url)
             if "text/html" not in kind:
-                if "pdf" in kind or "officedocument" in kind:
+                if ("pdf" in kind or "msword" in kind or "wordprocessingml" in kind) and urlsplit(url).path.lower().endswith((".pdf", ".doc", ".docx")):
                     docs.add(url)
                 else:
                     skipped += 1
@@ -133,10 +142,13 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                     queue.append(link)
         except (requests.RequestException, ValueError, OSError) as exc:
             errors.append(f"{url}: {exc}")
+        emit(phase="Seiten durchsuchen")
     remaining = len(queue)
     if remaining:
         errors.append(f"Schutzlimit erreicht: {remaining} URLs noch offen")
     run_id = save(site_id, pages, errors, data)
+    emit(phase="Dokument-Metadaten prüfen")
+    inventory_documents(run_id, site_id, docs, session, data, progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen", **kw))
     with sqlite3.connect(database(data)) as db:
         db.execute("""CREATE TABLE IF NOT EXISTS inventory (
             run_id INTEGER PRIMARY KEY, discovered INTEGER, documents INTEGER,
@@ -144,6 +156,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         db.execute("INSERT INTO inventory VALUES (?,?,?,?,?,?,?)",
                    (run_id, len(found), len(docs), len(visited), skipped,
                     remaining, len(sitemap_seen)))
+    emit(phase="Fertig")
     return run_id, {"discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
                     "sitemaps":len(sitemap_seen), "errors":errors}
