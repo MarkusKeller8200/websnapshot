@@ -229,3 +229,11 @@ Unter **Websites verwalten → Erfassungsbereich** sind Automatik (Unterbereich 
 Beim Wechsel eines schon vorhandenen domainweiten Snapshots auf einen Unterbereich zuerst einen neuen **Full-Snapshot** durchführen. Delta-Snapshots dürfen keinen alten, zu breiten Datenbestand übernehmen.
 
 Details: [Release v0.6.8](docs/releases/v0.6.8.md), [CHANGELOG](CHANGELOG.md).
+
+## WebSnapshot v0.6.10 – Anpassbares Link-Limit und kompaktes Menü
+
+Das bisher feste Links-pro-Seite-Limit von 300 ist neu global einstellbar (Standard **1'000**, Maximum **10'000**). Für neue Snapshots werden wegen dieses Limits ausgeschlossene Links mit ihrer **Quellseite** gespeichert. Du findest diese Angaben unter **Snapshot-Verwaltung → Crawl-Diagnose** mit Such- und CSV-Exportfunktion.
+
+Die linke Navigation lässt sich zu einer schmalen Icon-Leiste verkleinern. Die Menüpunkte bleiben anklickbar, während der Hauptinhalt mehr Platz erhält. Im **ausgeklappten Menü** werden keine Navigations-Tooltips eingeblendet, im **kompakten Modus** erscheinen sie **rechts neben dem jeweiligen Symbol**. Die Webseiten-Auswahl befindet sich wieder als Dropdown unter **Übersicht**; in der Icon-Leiste ist sie über das 🌐-Symbol verfügbar.
+
+Weitere Informationen: [Release-Notizen v0.6.10](docs/releases/v0.6.10.md) und [CHANGELOG](CHANGELOG.md).
