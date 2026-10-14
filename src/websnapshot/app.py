@@ -185,13 +185,10 @@ with st.sidebar:
                             format_func=site_label,key="ws_site_dropdown",
                             on_change=sync_selected_site)
                 else:
-                    chosen=st.selectbox("Website auswählen",
+                    st.selectbox("Website auswählen",
                         options=list(site_options),
-                        index=list(site_options).index(active_site_id),
-                        format_func=site_label,key="ws_site_dropdown")
-                    if chosen!=active_site_id:
-                        st.session_state["active_site_id"]=chosen
-                        st.rerun()
+                        format_func=site_label,key="ws_site_dropdown",
+                        on_change=sync_selected_site)
             elif not compact_nav:
                 st.caption("Noch keine Websites registriert.")
     if not compact_nav:
