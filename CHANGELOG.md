@@ -2,6 +2,16 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.11 – Ausschlussliste für URL-Bereiche (14.10.2026)
+- Pro Website eine mehrzeilige **Crawl-Ausschlussliste** hinterlegen, beispielsweise /schule-hinterbirch/aktuelles/agenda/p-2002.
+- Die Regel schliesst den exakten Pfad, Unterseiten und passende .html-Landingpages aus, ohne ähnlich benannte Nachbarpfade zu blockieren.
+- Ausschlüsse bereits bei Sitemap-Discovery sowie statischen und gerenderten Links beachten, **vor** dem Discovery- und Links-pro-Seite-Limit.
+- Pfadregeln pro Job festhalten; Zahl ausgelassener URL-Kandidaten live und je Regel in der Snapshot-Diagnose anzeigen, inklusive bis zu 20 Beispiel-URLs.
+- Bei einer geänderten Ausschlussliste vor weiteren Delta-Snapshots einen neuen Full-Snapshot verlangen.
+- Automatisierte Tests für Bereichsabgrenzung, Konfiguration, Migration, URL-Filterung und Delta-Vererbung.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.11.md)
+
 ## v0.6.10 – Link-Limit und Navigation (14.10.2026)
 - **Links pro Seite** global einstellbar von 1 bis 10'000, Standard **1'000** (zuvor fest 300).
 - Bei Schutzlimit-Ausschlüssen werden die nicht weiterverfolgten URLs zusammen mit ihren HTML-Quellseiten in SQLite protokolliert.
