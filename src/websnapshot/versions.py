@@ -111,7 +111,7 @@ def remove_snapshot(site_id: int, run_id: int, data: Path = DATA):
             raise ValueError("Delta-Snapshots können nicht einzeln gelöscht werden")
         db.execute("BEGIN")
         for table in ("downloads","documents","inventory","crawl_urls","crawl_quality","crawl_performance","document_links","document_referrers","document_properties",
-                      "crawl_link_exclusions","crawl_path_exclusions","pages","snapshot_meta"):
+                      "crawl_link_exclusions","crawl_path_exclusions","crawl_discovery_stats","pages","snapshot_meta"):
             exists=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone()
             if exists:
                 db.execute(f"DELETE FROM {table} WHERE {'run_id' if table!='inventory' else 'run_id'}=?",(run_id,))
