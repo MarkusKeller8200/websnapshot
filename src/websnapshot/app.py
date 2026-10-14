@@ -680,8 +680,10 @@ if current_page == "Dokumente":
                     extension="."+stem.rsplit(".",1)[-1].lower() if "." in stem else ".pdf"
                     if extension not in (".pdf",".doc",".docx",".xlsx",".xls",".txt",".csv"):
                         extension=".pdf"
-                    preview_date,origin=choose_date(("HTTP Last-Modified",
-                                                     first.get("last_modified")))
+                    preview_date,origin=choose_date(
+                        ("Dokumentintern geändert",first.get("modified")),
+                        ("Dokumentintern erstellt",first.get("created")),
+                        ("HTTP Last-Modified",first.get("last_modified")))
                     try:
                         st.code(build_filename(stem,extension,
                             mode=renamer_mode,code=renamer_code,
@@ -822,6 +824,25 @@ if current_page == "Dokumente":
                            "und SHA-256 wird die Datei bei einer ausdrücklichen Prüfung "
                            "temporär übertragen (maximal 20 MB) und danach gelöscht. "
                            "TXT/CSV enthalten normalerweise keine eingebetteten Office-Tags.")
+                if selected_urls:
+                    if st.button("🔬 Eigenschaften und SHA-256 der Auswahl prüfen",
+                                 key=f"{prefix}_probe_selected",
+                                 disabled=len(selected_urls)>20):
+                        with st.spinner(f"{len(selected_urls)} Dokumente temporär prüfen …"):
+                            inspected=probe_selected(doc_run,sorted(selected_urls))
+                        failures=[entry for entry in inspected if entry.get("error")]
+                        if failures:
+                            st.warning(f"{len(failures)} von {len(inspected)} Dokumenten "
+                                       "konnten nicht geprüft werden.")
+                            for entry in failures[:10]:
+                                st.caption(f"{entry['url']}: {entry['error']}")
+                        else:
+                            st.success(f"{len(inspected)} Dokumente erfolgreich geprüft.")
+                        st.rerun()
+                    if len(selected_urls)>20:
+                        st.caption("Für eine Metadatenprüfung höchstens 20 Dokumente "
+                                   "gleichzeitig auswählen. Der normale Download "
+                                   "bleibt davon unabhängig.")
                 st.session_state[selection_key]=sorted(selected_urls)
                 st.caption(f"**{len(selected_urls)} Dokumente für den Download vorgemerkt** "
                            "– auch ausserhalb des aktuellen Suchfilters.")
