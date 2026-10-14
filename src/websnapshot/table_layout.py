@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
-from math import ceil
 
 NUMERIC_NAMES = {
     "id","nr.","seiten","snapshots","dokumente","urls",
@@ -71,13 +70,13 @@ def column_width(rows: Sequence[Mapping], column: str, *,
     if key in CHECK_NAMES:
         return min(cap or 130,max(110,len(title)*8+30))
     if key in NUMERIC_NAMES:
-        lower,upper=80,220
+        lower,upper=80,155
     elif key in DATE_NAMES:
         lower,upper=165,245
     elif key in STATUS_NAMES:
         lower,upper=120,320
     elif key in WIDE_NAMES or link:
-        lower,upper=165,720
+        lower,upper=175,580
     else:
         lower,upper=110,450
     if cap is not None:
