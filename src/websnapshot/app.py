@@ -23,6 +23,8 @@ from websnapshot.document_selection import filter_documents, bulk_selection, mer
 
 
 from websnapshot.ui_diff import comparison_html
+from websnapshot.document_renamer import (get_profile, set_profile, RENAMED, ORIGINAL,
+    CASE_MODES, filename_from_headers, build_filename, choose_date)
 
 ROOT = Path(__file__).resolve().parents[2]
 st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide",
@@ -509,6 +511,53 @@ if current_page == "Dokumente":
             docs = list_documents(doc_run)
             st.caption("PDF- und Word-Dateien werden ausschliesslich nach Auswahl "
                        "heruntergeladen. Suche und Auswahl gelten nur für diesen Snapshot.")
+            with st.expander("🏷️ Dokument-Renamer",expanded=True):
+                saved_profile=get_profile(site_id)
+                renamer_mode=st.radio("Dateiname",
+                    [RENAMED,ORIGINAL],
+                    format_func=lambda mode: "YYYY_MM_DD_HERKUNFT_Dokumentenname" if mode==RENAMED
+                        else "Originalname (ohne Präfix)",
+                    index=0 if saved_profile["mode"]==RENAMED else 1,
+                    horizontal=True,key=f"rename_mode_{site_id}")
+                a,b=st.columns(2)
+                with a:
+                    renamer_code=st.text_input("Herkunftskürzel",
+                        value=saved_profile["code"],max_chars=16,
+                        placeholder="DSB / SEKB",key=f"rename_code_{site_id}",
+                        disabled=renamer_mode==ORIGINAL)
+                with b:
+                    renamer_case=st.selectbox("Schreibweise",
+                        list(CASE_MODES),format_func=lambda val:CASE_MODES[val],
+                        index=list(CASE_MODES).index(saved_profile["case"]),
+                        key=f"rename_case_{site_id}",disabled=renamer_mode==ORIGINAL)
+                if st.button("Renamer-Einstellungen speichern",key=f"save_rename_{site_id}"):
+                    try:
+                        set_profile(site_id,mode=renamer_mode,code=renamer_code,
+                                    case=renamer_case)
+                        st.success("Renamer-Profil gespeichert.")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+                st.caption("Datum: zuerst PDF-/DOCX-Metadaten, dann HTTP Last-Modified, "
+                           "sonst Download-Datum (Ersatzwert). "
+                           "Dateinamenkollisionen werden mit _2, _3 usw. gelöst; "
+                           "SHA-256 bleibt ausschliesslich intern.")
+                if docs:
+                    first=docs[0]
+                    stem=filename_from_headers(first["url"])
+                    extension="."+stem.rsplit(".",1)[-1].lower() if "." in stem else ".pdf"
+                    if extension not in (".pdf",".doc",".docx"):
+                        extension=".pdf"
+                    preview_date,origin=choose_date(("HTTP Last-Modified",
+                                                     first.get("last_modified")))
+                    try:
+                        st.code(build_filename(stem,extension,
+                            mode=renamer_mode,code=renamer_code,
+                            case=renamer_case,date=preview_date),language=None)
+                        st.caption("Beispiel anhand des ersten Dokuments; endgültiger "
+                                   "Name kann aufgrund von Dateimetadaten variieren.")
+                    except ValueError:
+                        st.caption("Bitte ein gültiges Herkunftskürzel eingeben.")
             if not docs:
                 st.info("Für diesen Snapshot ist keine Dokumentliste vorhanden.")
             else:
