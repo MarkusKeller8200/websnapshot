@@ -14,6 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 from .core import DATA, MAX_BYTES, AGENT, check_public, database, extract, normalize_url, save
 from .documents import inventory_documents
+from .doclinks import related_document
 from .versions import latest_run, effective_pages, save_partial, mark_full, kind
 from .settings import get as get_capture
 from hashlib import sha256
@@ -118,6 +119,12 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         nonlocal truncated, skipped
         try:
             link=canonical(link)
+            if related_document(link,start):
+                if link not in docs:
+                    docs.add(link)
+                    found.add(link)
+                    url_records[link]=(source,"document","Zugehöriger Dokument-Host")
+                return
             if urlsplit(link).netloc!=host or link in queued:
                 return
             if len(queued)>=MAX_DISCOVERED:
@@ -164,7 +171,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 if node.tag.rsplit("}", 1)[-1] != "loc" or not node.text:
                     continue
                 link = normalize_url(node.text)
-                if urlsplit(link).netloc != host:
+                if urlsplit(link).netloc != host and not related_document(link,start):
                     continue
                 if root.tag.rsplit("}", 1)[-1] == "sitemapindex":
                     if len(sitemap_seen) + len(sitemap_queue) < 25:
