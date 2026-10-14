@@ -293,3 +293,11 @@ Ein Namenskonflikt zwischen dem HTTP-`Content-Type` und der Funktion zur Ermittl
 Bereits vorhandene Snapshots und Einstellungen bleiben unverändert. Nach dem Update kannst du den zuvor fehlgeschlagenen Partial-Snapshot erneut starten.
 
 Details: [Release v0.6.17](docs/releases/v0.6.17.md) und [CHANGELOG](CHANGELOG.md).
+
+## WebSnapshot v0.6.18 – Dokumente bei Partial-Snapshots prüfen
+
+Ein Partial-Snapshot prüft jetzt nicht mehr nur bekannte Webseiten, sondern auch **die zuvor inventarisierten PDF-, Word-, Excel-, TXT- und CSV-URLs**. Ihre ETags, HTTP-Änderungsdaten und Dateigrössen werden per **HEAD** mit der bisherigen Snapshot-Kette verglichen. Neue Dokumentlinks auf bereits bekannten HTML-Seiten werden ebenfalls inventarisiert.
+
+HTTP-Fehler (z. B. 404), Weiterleitungen, nicht unterstützte HEAD-Anfragen und robots.txt-Sperren werden ausdrücklich gekennzeichnet. Die Dokumentliste zeigt den **HTTP-Änderungsstatus** getrennt von einer optionalen Inhaltsprüfung per SHA-256. Die Ergebnisse stehen zudem im Job-Protokoll. Dabei werden Dokumentdateien nicht automatisch heruntergeladen. Ein sicherer Hashvergleich benötigt weiterhin einen bewussten Dateiabruf.
+
+Details: [Release v0.6.18](docs/releases/v0.6.18.md) und [CHANGELOG](CHANGELOG.md).
