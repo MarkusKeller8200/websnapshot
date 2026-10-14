@@ -6,6 +6,7 @@ Legacy .doc uses OLE compound files, which are intentionally not parsed yet.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from .date_format import format_property
 import csv
 from io import StringIO
 from pathlib import Path
@@ -179,7 +180,7 @@ def display_properties(props: dict) -> list[dict]:
     rows=[]
     for key,label in PROPERTY_LABELS.items():
         if key in props and props[key] not in ("",None):
-            rows.append({"Eigenschaft":label,"Wert":str(props[key])})
+            rows.append({"Eigenschaft":label,"Wert":format_property(key,props[key])})
     for key,val in (props.get("custom_properties") or {}).items():
         rows.append({"Eigenschaft":"Benutzerdefiniert: "+key,"Wert":str(val)})
     return rows
