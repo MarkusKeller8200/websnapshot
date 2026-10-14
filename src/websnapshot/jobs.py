@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from .core import DATA, database
 from .inventory import discover_and_snapshot
-from .settings import require_available
+from .settings import get as get_capture
 
 _executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="websnapshot")
 _lock = threading.Lock()
@@ -34,9 +34,11 @@ def _connect(data: Path):
     return connection
 
 
-def launch(site_id: int, url: str, limit: int, data: Path = DATA) -> tuple[bool, int]:
+def launch(site_id: int, url: str, limit: int, data: Path = DATA, snapshot_kind: str = 'full') -> tuple[bool, int]:
     """Atomic database claim, safe against double-clicks and independent sessions."""
-    require_available(site_id, data)
+    if snapshot_kind not in ('full','partial'):
+        raise ValueError('Unbekannter Snapshottyp')
+    get_capture(site_id,data)
     with _lock, _connect(data) as db:
         existing = db.execute("""SELECT id FROM jobs WHERE site_id=?
             AND state IN ('queued','running') ORDER BY id DESC LIMIT 1""", (site_id,)).fetchone()
@@ -52,11 +54,11 @@ def launch(site_id: int, url: str, limit: int, data: Path = DATA) -> tuple[bool,
             existing = db.execute("""SELECT id FROM jobs WHERE site_id=?
                 AND state IN ('queued','running')""",(site_id,)).fetchone()
             return False, existing[0]
-    _executor.submit(_work,job_id,site_id,url,limit,data)
+    _executor.submit(_work,job_id,site_id,url,limit,data,snapshot_kind)
     return True, job_id
 
 
-def _work(job_id: int, site_id: int, url: str, limit: int, data: Path) -> None:
+def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_kind: str) -> None:
     def progress(**update):
         with _connect(data) as db:
             db.execute("UPDATE jobs SET progress=? WHERE id=?",
@@ -66,7 +68,7 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path) -> None:
         with _connect(data) as db:
             db.execute("UPDATE jobs SET state='running' WHERE id=?", (job_id,))
             db.commit()
-        run_id, result = discover_and_snapshot(site_id,url,limit,data,progress=progress)
+        run_id, result = discover_and_snapshot(site_id,url,limit,data,progress=progress,snapshot_kind=snapshot_kind)
         with _connect(data) as db:
             db.execute("""UPDATE jobs SET state='complete', ended_at=?,
                 run_id=?, message=?, progress=? WHERE id=?""",
