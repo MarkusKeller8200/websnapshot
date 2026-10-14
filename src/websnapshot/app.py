@@ -1195,7 +1195,8 @@ if current_page == "Sitemap":
                             width=column_width(filtered,"Zeichen")),
                         "Öffnen":st.column_config.LinkColumn("Original",
                             display_text="Öffnen ↗",width=column_width(filtered,"Öffnen",cap=132,header="Original")),
-                        "URL":st.column_config.TextColumn("URL")})
+                        "URL":st.column_config.TextColumn("URL",
+                             width=column_width(filtered,"URL"))})
                 st.caption("Die flache Ansicht lässt sich durch Klick auf einen "
                            "Spaltenkopf beliebig sortieren.")
             else:
@@ -1261,7 +1262,8 @@ if current_page == "Sitemap":
                             "Öffnen":st.column_config.LinkColumn(
                                 "Original",display_text="Öffnen ↗",
                                  width=column_width(rows,"Öffnen",cap=132,header="Original")),
-                            "URL":st.column_config.TextColumn("URL")})
+                            "URL":st.column_config.TextColumn("URL",
+                             width=column_width(rows,"URL"))})
                     if not search.strip():
                         changed=False
                         for i,row in enumerate(edited):
