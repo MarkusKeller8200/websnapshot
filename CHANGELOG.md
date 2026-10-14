@@ -2,6 +2,16 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.13 – Discovery beschleunigen und URL-Flut erklären (14.10.2026)
+- robots.txt-Ausschlüsse bei erfolgreich geladenen Regeln **vor** der Aufnahme in die Crawl-Warteschlange berücksichtigen.
+- XML-Sitemap-Einträge unmittelbar filtern und einreihen, ohne eine potenziell riesige Zwischenliste aufzubauen.
+- Live- und Archivstatistik für unterschiedliche Pfade, URLs mit Query-Parametern, robots.txt-Ausschlüsse und Entdeckungsquellen.
+- Diagnose mit häufigsten Query-Parametern und den Pfaden mit den meisten URL-Varianten, um Auffälligkeiten wie Kalender-/Filter-Varianten zu erkennen.
+- Schutzlimits und benutzerdefinierte Ausschlusslisten unverändert respektieren; bereits laufende Jobs übernehmen neue Filter nicht rückwirkend.
+- Regressionstests für frühe robots-Filterung, Sitemap-Limits und dauerhafte Discovery-Diagnose.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.13.md)
+
 ## v0.6.12 – Crawl-Ausschlussliste speichern (14.10.2026)
 - Eigener **«Ausschlussliste speichern»**-Button direkt unter dem mehrzeiligen Eingabefeld.
 - Aktuelle Eingabe über Streamlit-Callback übernehmen und Pfade unabhängig von Browser- und Erfassungsmodus speichern.
