@@ -2,6 +2,16 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.9 – Dokumenteigenschaften und Fundstellen
+- PDF, DOC/DOCX, XLS/XLSX, TXT und CSV in Inventar, Metadatenprüfung und Download.
+- Office-Tags wie Titel, Autor, Revision, Firma und Erstellungs-/Änderungsdatum sowie PDF-Metadaten.
+- TXT-/CSV-Eigenschaften: Kodierung, Zeilen, CSV-Trennzeichen und Spalten.
+- SHA-256 und Dateieigenschaften auf ausdrücklichen Wunsch temporär vor dem eigentlichen Download prüfen; HTTP-Daten bleiben separat.
+- Mehrere Seiten können auf dasselbe Dokument verweisen; alle Fundstellen werden ohne Dokument-Duplikate protokolliert.
+- Suchbare Dokumententabelle und Detailansicht, inklusive Datenbankmigration, Tests und robots.txt-Berücksichtigung.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.9.md)
+
 ## v0.6.8 – Unterseiten gezielt crawlen (14.10.2026)
 - Automatische Begrenzung auf die Startseite und ihre Unterpfade bei Unterseiten-URLs; die Root-Domain bleibt standardmässig domainweit.
 - Neue websitebezogene Einstellung **«Erfassungsbereich»** mit Automatik, Unterbereich und gesamter Domain.
