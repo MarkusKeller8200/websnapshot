@@ -47,28 +47,31 @@ def init(data: Path = DATA):
             static_pages INTEGER NOT NULL DEFAULT 0,
             browser_static_pages INTEGER NOT NULL DEFAULT 0,
             browser_dynamic_pages INTEGER NOT NULL DEFAULT 0,
+            browser_unknown_pages INTEGER NOT NULL DEFAULT 0,
             timeouts INTEGER NOT NULL DEFAULT 0
         )""")
 
 
 def save(run_id: int, timings: Timings, *, static_pages: int,
          browser_static_pages: int, browser_dynamic_pages: int,
-         timeouts: int, data: Path = DATA):
+         browser_unknown_pages: int = 0, timeouts: int = 0, data: Path = DATA):
     init(data)
     with sqlite3.connect(database(data)) as db:
         db.execute("""INSERT OR REPLACE INTO crawl_performance
           (run_id,metrics_json,static_pages,browser_static_pages,
-           browser_dynamic_pages,timeouts) VALUES (?,?,?,?,?,?)""",
+           browser_dynamic_pages,browser_unknown_pages,timeouts) VALUES (?,?,?,?,?,?,?)""",
           (run_id,json.dumps(timings.summary(),ensure_ascii=False),
-           static_pages,browser_static_pages,browser_dynamic_pages,timeouts))
+           static_pages,browser_static_pages,browser_dynamic_pages,
+           browser_unknown_pages,timeouts))
 
 
 def get(run_id: int, data: Path = DATA) -> dict | None:
     init(data)
     with sqlite3.connect(database(data)) as db:
         row=db.execute("""SELECT metrics_json,static_pages,browser_static_pages,
-          browser_dynamic_pages,timeouts FROM crawl_performance WHERE run_id=?""",
+          browser_dynamic_pages,browser_unknown_pages,timeouts FROM crawl_performance WHERE run_id=?""",
           (run_id,)).fetchone()
     return None if row is None else dict(
         timings=json.loads(row[0]),static_pages=row[1],
-        browser_static_pages=row[2],browser_dynamic_pages=row[3],timeouts=row[4])
+        browser_static_pages=row[2],browser_dynamic_pages=row[3],
+        browser_unknown_pages=row[4],timeouts=row[5])
