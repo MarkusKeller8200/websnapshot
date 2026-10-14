@@ -1,63 +1,151 @@
-"""Streamlit user interface for local snapshots."""
+"""WebSnapshot: lokales Dashboard und manuell gestartete Website-Inventarisierung."""
 import json
+from datetime import datetime
+from pathlib import Path
+import os
+import subprocess
+import sys
 import streamlit as st
 
-try:
-    from websnapshot.core import add_site, sites, runs, snapshot, compare, report
-except ModuleNotFoundError:
-    from core import add_site, sites, runs, snapshot, compare, report
+from websnapshot.core import DATA, add_site, sites, runs, compare, report
+from websnapshot.inventory import dashboard, discover_and_snapshot, remove_site, storage_bytes
 
+ROOT = Path(__file__).resolve().parents[2]
 st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide")
 st.title("WebSnapshot")
-st.caption("Manuelle Website-Snapshots und Änderungsberichte · v0.1.0")
+st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.2.0")
 
-with st.form("site"):
-    url = st.text_input("Website hinzufügen (https://...)")
-    if st.form_submit_button("Website speichern"):
-        try:
-            add_site(url)
-            st.success("Website gespeichert")
-        except (ValueError, OSError) as exc:
-            st.error(str(exc))
+tab_overview, tab_sites, tab_snapshots, tab_system = st.tabs(
+    ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Updates"])
 
-options = dict(sites())
-if not options:
-    st.info("Füge zuerst eine Website hinzu.")
-else:
-    site = st.selectbox("Website", options=list(options), format_func=lambda x: options[x])
-    limit = st.number_input("Maximale Seitenzahl", min_value=1, max_value=200, value=30)
-    depth = st.slider("Linktiefe", min_value=0, max_value=5, value=2)
-    if st.button("Neuen Snapshot erstellen", type="primary"):
-        with st.spinner("Website wird untersucht …"):
+with tab_overview:
+    overview = dashboard()
+    if overview:
+        total_sites = len(overview)
+        total_snapshots = sum(x["snapshots"] for x in overview)
+        total_pages = sum(x["pages"] for x in overview)
+        total_docs = sum(x["documents"] for x in overview)
+        cols = st.columns(5)
+        for col, label, value in zip(cols,
+                                     ["Websites", "Snapshots", "Seiten (letzter Lauf)",
+                                      "Dokumentlinks (letzter Lauf)", "Lokaler Speicher"],
+                                     [total_sites, total_snapshots, total_pages, total_docs,
+                                      f"{storage_bytes()/1048576:.2f} MB"]):
+            col.metric(label, value)
+        st.caption("Dokumente werden als Links gezählt, noch nicht heruntergeladen. "
+                   "Speicher umfasst lokale Datenbankdateien; pro Website wird die Textmenge geschätzt.")
+        for entry in overview:
+            age = entry["oldest_age"]
+            marker = "🔴" if age is not None and age > 30 else "🟢" if age is not None else "⚪"
+            st.subheader(entry["url"])
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Seiten", entry["pages"])
+            c2.metric("Dokumentlinks", entry["documents"])
+            c3.metric("Snapshots", entry["snapshots"])
+            c4.metric("Archivierter Text", f"{entry['content_bytes']/1048576:.2f} MB")
+            st.write(f"{marker} Ältester Snapshot: **{entry['oldest'] or 'Noch keiner'}**"
+                     + (f" (**{age} Tage alt**)" if age is not None else ""))
+            st.caption(f"Letzter Snapshot: {entry['newest'] or '—'} · "
+                       f"Bekannte URLs: {entry['discovered']} · Noch offen: {entry['pending']}")
+        st.info("Erfassungszahlen beziehen sich auf entdeckte URLs; eine garantiert "
+                "vollständige Website-Erfassung ist technisch nicht nachweisbar.")
+    else:
+        st.info("Noch keine Websites registriert. Unter «Websites verwalten» hinzufügen.")
+
+with tab_sites:
+    with st.form("add_site", clear_on_submit=True):
+        url = st.text_input("Neue Website (https://...)")
+        if st.form_submit_button("Website hinzufügen"):
             try:
-                run, count, errors = snapshot(site, options[site], int(limit), depth)
-                st.success(f"Snapshot {run}: {count} Seiten gespeichert")
-                if errors:
-                    st.warning(f"{len(errors)} URLs konnten nicht verarbeitet werden")
-                    with st.expander("Fehlerdetails"):
-                        st.code("\n".join(errors))
+                add_site(url)
+                st.success("Website gespeichert.")
+                st.rerun()
             except (ValueError, OSError) as exc:
                 st.error(str(exc))
-    history = runs(site)
-    st.subheader("Snapshot-Archiv")
-    st.dataframe([{"ID": row[0], "Datum UTC": row[1], "Status": row[2],
-                   "Abruffehler": len(json.loads(row[3]))} for row in history], hide_index=True)
-    if len(history) > 1:
-        st.subheader("Vergleichen")
-        ids = [row[0] for row in history]
-        c1, c2 = st.columns(2)
-        with c1:
-            old = st.selectbox("Älterer Snapshot", ids, index=1)
-        with c2:
-            new = st.selectbox("Neuerer Snapshot", ids, index=0)
-        if old != new:
-            changes = compare(old, new)
-            st.write(f"**{len(changes)} Unterschiede**")
-            for change in changes:
-                with st.expander(f"{change['kind'].upper()} · {change['url']}"):
-                    st.code(change["diff"] or "Kein Text-Diff", language="diff")
-            st.download_button("HTML-Änderungsbericht", report(changes, old, new),
-                               file_name=f"websnapshot_{old}_{new}.html", mime="text/html")
-            st.caption("Missing bedeutet nicht nachweislich gelöscht.")
-        else:
-            st.info("Bitte zwei unterschiedliche Snapshots wählen.")
+    entries = dashboard()
+    for entry in entries:
+        with st.expander(entry["url"], expanded=False):
+            st.write(f"Snapshots: {entry['snapshots']} · Seiten: {entry['pages']} · "
+                     f"Dokumentlinks: {entry['documents']}")
+            deletion = st.checkbox("Auch alle gespeicherten Snapshots dieser Website löschen",
+                                   key=f"hist_{entry['id']}")
+            confirm = st.checkbox("Entfernung bestätigen", key=f"confirm_{entry['id']}")
+            if st.button("Website entfernen", key=f"remove_{entry['id']}", disabled=not confirm):
+                remove_site(entry["id"], delete_history=deletion)
+                st.success("Website entfernt.")
+                st.rerun()
+    st.caption("Ohne Löschen der Historie bleiben ältere Snapshots in der Datenbank erhalten, "
+               "sind nach Entfernen der Website aber über die Oberfläche nicht mehr zugänglich.")
+
+with tab_snapshots:
+    options = dict(sites())
+    if not options:
+        st.info("Bitte zuerst eine Website hinzufügen.")
+    else:
+        site_id = st.selectbox("Website auswählen", list(options),
+                               format_func=lambda i: options[i])
+        limit = st.number_input("Sicherheitslimit: maximal besuchte URLs", 10, 20000, 1000,
+                                step=100)
+        st.caption("Automatische Sitemaps und rekursive Linksuche ohne feste Linktiefe. "
+                   "Das Schutzlimit verhindert endlose Crawls. robots.txt wird berücksichtigt.")
+        if st.button("Neuen Snapshot erstellen", type="primary"):
+            with st.spinner("Sitemaps und Unterseiten werden untersucht …"):
+                try:
+                    run_id, result = discover_and_snapshot(site_id, options[site_id], int(limit))
+                    st.success(f"Snapshot {run_id}: {result['pages']} HTML-Seiten "
+                               f"und {result['documents']} Dokumentlinks erfasst.")
+                    st.json({k:v for k,v in result.items() if k!="errors"})
+                    if result["errors"]:
+                        st.warning(f"{len(result['errors'])} Probleme / Grenzen erkannt.")
+                        with st.expander("Abrufprotokoll"):
+                            st.code("\n".join(result["errors"]))
+                except (ValueError, OSError) as exc:
+                    st.error(str(exc))
+        history = runs(site_id)
+        st.subheader("Snapshot-Verlauf")
+        st.dataframe([{"ID":r[0],"Zeitpunkt (UTC)":r[1],"Status":r[2],
+                       "Fehler":len(json.loads(r[3]))} for r in history],
+                     hide_index=True, use_container_width=True)
+        if len(history) > 1:
+            ids = [row[0] for row in history]
+            a,b = st.columns(2)
+            old_id = a.selectbox("Älterer Snapshot", ids, index=1)
+            new_id = b.selectbox("Neuerer Snapshot", ids, index=0)
+            if old_id != new_id:
+                changes = compare(old_id,new_id)
+                st.metric("Unterschiede",len(changes))
+                for item in changes:
+                    with st.expander(f"{item['kind'].upper()} · {item['url']}"):
+                        st.code(item["diff"] or "Kein Text-Diff", language="diff")
+                st.download_button("HTML-Änderungsbericht herunterladen",
+                                   report(changes,old_id,new_id),
+                                   file_name=f"websnapshot_{old_id}_{new_id}.html",
+                                   mime="text/html")
+                st.caption("Eine fehlende Seite bedeutet nicht, dass sie gelöscht wurde.")
+
+with tab_system:
+    st.subheader("Anwendung aktualisieren")
+    st.write("Übernimmt neue Änderungen aus dem konfigurierten GitHub-Repository "
+             "und installiert Python-Abhängigkeiten. Keine Updates während eines Crawls starten.")
+    st.warning("Nur für die lokale Einzelplatzinstallation. Git muss verfügbar sein; "
+               "lokale Codeänderungen können das Update verhindern. "
+               "Vorher wichtige Daten aus .data sichern.")
+    confirm_update = st.checkbox("Ich möchte den aktuellen GitHub-Stand installieren.")
+    if st.button("Update installieren und Anwendung neu starten",disabled=not confirm_update):
+        try:
+            status = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain"],
+                                    text=True,capture_output=True,timeout=15,check=True)
+            if status.stdout.strip():
+                st.error("Lokale Änderungen vorhanden. Bitte vor dem Update sichern/committen.")
+            else:
+                pull = subprocess.run(["git","-C",str(ROOT),"pull","--ff-only"],
+                                      text=True,capture_output=True,timeout=120,check=True)
+                install = subprocess.run([sys.executable,"-m","pip","install","-e",str(ROOT)],
+                                         text=True,capture_output=True,timeout=240,check=True)
+                st.success("Update abgeschlossen. Anwendung wird neu geladen.")
+                st.code(pull.stdout[-1500:] + "\n" + install.stdout[-1500:])
+                st.rerun()
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+            st.error(f"Update fehlgeschlagen: {exc}")
+            if isinstance(exc, subprocess.CalledProcessError):
+                st.code((exc.stderr or exc.stdout or "")[-3000:])
