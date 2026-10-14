@@ -13,6 +13,7 @@ from websnapshot.core import DATA, add_site, sites, runs, compare, report
 from websnapshot.inventory import dashboard, discover_and_snapshot, remove_site, storage_bytes
 from websnapshot.documents import list_documents, download_selected
 from websnapshot.jobs import launch, latest, running, recover_interrupted, request_cancel, snapshot_job
+from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
 from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
 from websnapshot.versions import kind, effective_pages, remove_snapshot
@@ -52,6 +53,19 @@ def job_controls(site_id, url, limit, snap_kind):
         end_time = datetime.fromisoformat(job["ended_at"]) if job["ended_at"] else datetime.now(timezone.utc)
         elapsed = max(0,int((end_time-start_time).total_seconds()))
         st.write(f"**Job #{job['id']} · {job['state']}**")
+        last_activity=job.get("last_activity_at") or job.get("last_progress_at")
+        if last_activity:
+            idle=max(0,int((datetime.now(timezone.utc)-datetime.fromisoformat(last_activity)).total_seconds()))
+            st.caption(f"Letzte Aktivität: {datetime.fromisoformat(last_activity).strftime('%d.%m. %H:%M:%S')} UTC · vor {idle}s")
+            if active and idle >= 60:
+                st.warning(f"Seit {idle} Sekunden kein Fortschritt. Möglicherweise langsame Anfrage oder blockierter Job; dies ist noch kein sicherer Absturznachweis.")
+        with st.expander("Technisches Job-Protokoll", expanded=False):
+            logfile=read_job_log(job["id"])
+            st.code(logfile,language="text")
+            if log_path(job["id"]).is_file():
+                st.download_button("Logdatei herunterladen",data=logfile,
+                    file_name=f"job_{job['id']}.log",mime="text/plain",
+                    key=f"log_current_{site_id}_{job['id']}")
         col = st.columns(4)
         col[0].metric("Gestartet (UTC)",start_time.strftime("%d.%m. %H:%M"))
         col[1].metric("Laufzeit",f"{elapsed//60:02d}:{elapsed%60:02d}")
@@ -330,8 +344,33 @@ with tab_snapshots:
                     mime="application/json",key=f"download_summary_{detail_id}")
 
 
-            section_compare, section_documents, section_quality, section_manage = st.tabs(
-                ["Änderungen vergleichen", "Dokumente", "Crawl-Diagnose", "Verwaltung"])
+            section_compare, section_documents, section_quality, section_logs, section_manage = st.tabs(
+                ["Änderungen vergleichen", "Dokumente", "Crawl-Diagnose", "Job-Protokolle", "Verwaltung"])
+            with section_logs:
+                recent_job=latest(site_id)
+                with st.expander("Aktuellster Job",expanded=True):
+                    if recent_job:
+                        st.write(f"Job #{recent_job['id']} · {recent_job['state']}")
+                        st.code(read_job_log(recent_job["id"]),language="text")
+                        if log_path(recent_job["id"]).is_file():
+                            st.download_button("Aktuelle Logdatei herunterladen",
+                                data=read_job_log(recent_job["id"]),
+                                file_name=f"job_{recent_job['id']}.log",mime="text/plain",
+                                key=f"currentlog_{site_id}")
+                    else:
+                        st.info("Noch keine Jobs vorhanden.")
+                job_options=[(r[0],snapshot_job(r[0])) for r in history]
+                job_options=[(run_id,j) for run_id,j in job_options if j]
+                if job_options:
+                    historical=st.selectbox("Abgeschlossenen Job auswählen",
+                        options=[j["id"] for _,j in job_options],key="historical_log_id",
+                        format_func=lambda i:f"Job #{i}")
+                    st.code(read_job_log(historical),language="text")
+                    if log_path(historical).is_file():
+                        st.download_button("Historische Logdatei herunterladen",
+                            data=read_job_log(historical),file_name=f"job_{historical}.log",
+                            mime="text/plain",key=f"loghistory_{historical}")
+
 
             with section_compare:
                 if len(history) < 2:
