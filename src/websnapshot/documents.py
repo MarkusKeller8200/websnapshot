@@ -96,14 +96,20 @@ def _clean(value: str) -> str:
     return value[:100] or "unbenannt"
 
 
-def destination(url: str, root: Path, flat: bool) -> Path:
+def destination(url: str, root: Path, flat: bool, content_type: str = "") -> Path:
     p = urlsplit(url)
     segments = [_clean(unquote(x)) for x in PurePosixPath(p.path).parts if x != "/"]
     if not segments:
         raise ValueError("Kein Dokumentname in URL")
     filename = segments[-1]
     if not filename.lower().endswith(EXTS):
-        raise ValueError("Nur PDF- und Word-Dateien mit Dateiendung erlaubt")
+        kind=content_type.lower()
+        suffix=".pdf" if "application/pdf" in kind else (
+            ".docx" if "wordprocessingml.document" in kind else (
+            ".doc" if "msword" in kind else None))
+        if not suffix:
+            raise ValueError("Antwort ist kein unterstütztes PDF/Word-Dokument")
+        filename=_clean(filename.rsplit(".",1)[0])+"_"+sha256(url.encode()).hexdigest()[:10]+suffix
     host = _clean(p.netloc.replace(":", "_"))
     parent = root / host if flat else root.joinpath(host, *segments[:-1])
     if p.query or flat:
@@ -128,9 +134,8 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
             continue
         try:
             check_public(url)
-            target = destination(url,root,flat)
-            target.parent.mkdir(parents=True,exist_ok=True)
-            temp = target.with_name(target.name+".part")
+            target = None
+            temp = None
             size = 0
             digest = sha256()
             try:
@@ -138,6 +143,12 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
                     if res.is_redirect:
                         raise ValueError("Weiterleitung nicht verfolgt")
                     res.raise_for_status()
+                    kind=res.headers.get("Content-Type","").lower()
+                    target = destination(url,root,flat,kind)
+                    if not any(x in kind for x in ("pdf","msword","wordprocessingml")):
+                        raise ValueError("Antwort hat keinen PDF/Word-Inhaltstyp")
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    temp = target.with_name(target.name+".part")
                     with temp.open("wb") as file:
                         for chunk in res.iter_content(65536):
                             size += len(chunk)
@@ -147,7 +158,8 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
                             digest.update(chunk)
                 temp.replace(target)
             finally:
-                temp.unlink(missing_ok=True)
+                if temp is not None:
+                    temp.unlink(missing_ok=True)
             with sqlite3.connect(database(data)) as db:
                 db.execute("""INSERT INTO downloads
                     (run_id,url,path,bytes,digest,downloaded_at) VALUES (?,?,?,?,?,?)""",
