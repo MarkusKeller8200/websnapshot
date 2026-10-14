@@ -302,6 +302,10 @@ with tab_snapshots:
                 st.dataframe([{"Kennzahl":name,"Wert":info.get(key,"Nicht vorhanden")}
                               for name,key in values],hide_index=True,
                              width="stretch",height=320)
+                if info.get("limit_warnings"):
+                    st.warning("Erreichte Schutzlimits: " + " · ".join(info["limit_warnings"]))
+                    st.caption("Abgewiesene URL-Kandidaten nach Ursache: "
+                               + json.dumps(info.get("excluded_limits",{}),ensure_ascii=False))
                 if info.get("snapshot_kind")=="partial":
                     st.caption(f"Full-Baseline: #{info.get('full_baseline_id','—')} · "
                                f"Änderungen zur Full-Baseline: {info.get('changed_since_full','—')}")
