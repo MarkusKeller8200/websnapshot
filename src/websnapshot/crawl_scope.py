@@ -8,7 +8,7 @@ SCOPE_HOST = "host"
 SCOPES = {SCOPE_AUTO:"Automatisch (Unterbereich bei Unterseiten)",
           SCOPE_PATH:"Nur Startseite und darunterliegende Pfade",
           SCOPE_HOST:"Gesamte Domain"}
-DOCUMENT_SUFFIXES = (".pdf",".doc",".docx")
+DOCUMENT_SUFFIXES = (".pdf",".doc",".docx",".xlsx",".xls",".txt",".csv")
 
 
 def logical_root(start: str) -> str:
