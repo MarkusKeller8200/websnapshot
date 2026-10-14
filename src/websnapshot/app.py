@@ -161,6 +161,17 @@ with tab_snapshots:
                        "Fehler":len(json.loads(r[3]))} for r in history],
                      hide_index=True, use_container_width=True)
         if history:
+            st.subheader("Snapshot entfernen")
+            remove_id = st.selectbox("Snapshot", [r[0] for r in history],key="remove_snapshot")
+            confirm = st.checkbox("Dauerhaft löschen bestätigen",key="confirm_snapshot")
+            if st.button("Snapshot löschen", disabled=not confirm or running()>0):
+                try:
+                    remove_snapshot(site_id,remove_id)
+                    st.success("Snapshot entfernt")
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        if history:
             st.subheader("PDF- und Word-Dokumente")
             doc_run = st.selectbox("Dokumentinventar aus Snapshot", [r[0] for r in history],
                                    key="document_run")
@@ -223,26 +234,15 @@ with tab_map:
             selected_run = st.selectbox("Snapshot", [r[0] for r in map_history], key="map_run")
             import sqlite3
             from websnapshot.core import database
-            with sqlite3.connect(database()) as db:
-                entries = db.execute("SELECT url,title FROM pages WHERE run_id=? ORDER BY url",
-                                     (selected_run,)).fetchall()
-            st.caption(f"{len(entries)} archivierte HTML-Seiten. Die Gliederung folgt URL-Pfaden, "
-                       "nicht zwingend der tatsächlichen Website-Navigation.")
-            query = st.text_input("URL oder Titel suchen",key="sitemap_search")
-            folders = {}
-            for url,title in entries:
-                parts = [s for s in urlsplit(url).path.split("/") if s]
-                folders.setdefault(parts[0] if parts else "Startseite", []).append((url,title))
-            for folder,values in sorted(folders.items()):
-                subset = [(u,t) for u,t in values if query.casefold() in (u+" "+t).casefold()]
-                if not subset:
-                    continue
-                with st.expander(f"📁 {folder} ({len(subset)})",expanded=bool(query)):
-                    for url,title in subset:
-                        left,right=st.columns([6,1])
-                        left.write(f"📄 {title or url}")
-                        left.caption(url)
-                        right.link_button("Öffnen ↗",url)
+            pages = effective_pages(selected_run)
+            st.caption(f"{len(pages)} HTML-Seiten inkl. geerbter Baseline")
+            table = [{"Pfad":urlsplit(url).path or "/",
+                      "Titel":title,"URL":url,"Öffnen":url,
+                      "Zeichen":len(content)}
+                     for url,(title,content,digest) in sorted(pages.items())]
+            st.dataframe(table, hide_index=True,use_container_width=True,
+                column_config={"Öffnen":st.column_config.LinkColumn("Originalseite",
+                                  display_text="Öffnen")})
 
 with tab_system:
     with st.expander("Unterbrochene Job-Sperren freigeben"):
