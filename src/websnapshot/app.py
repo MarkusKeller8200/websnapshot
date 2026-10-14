@@ -1,5 +1,6 @@
 """WebSnapshot: lokales Dashboard und manuell gestartete Website-Inventarisierung."""
 import json
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from time import monotonic, sleep
 from datetime import datetime
@@ -19,7 +20,8 @@ from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
 from websnapshot.path_exclusion_audit import summary as excluded_path_summary
 from websnapshot.link_exclusions import stats as excluded_link_stats, page as excluded_link_page, csv_page as excluded_link_csv_page
-from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
+from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings, set_exclusions
+from websnapshot.url_exclusions import parse_excludes
 from websnapshot.crawl_scope import SCOPES, effective_scope, logical_root
 from websnapshot.versions import kind, effective_pages, effective_page_metadata, remove_snapshot
 from urllib.parse import urlsplit
@@ -127,6 +129,17 @@ if st.session_state.get("ws_site_dropdown") not in site_options:
     st.session_state["ws_site_dropdown"]=active_site_id
 def sync_selected_site():
     st.session_state["active_site_id"]=st.session_state["ws_site_dropdown"]
+def save_site_exclusion_list(site_id):
+    """Streamlit on_click receives the newest textarea state reliably."""
+    feedback_key=f"exclude_feedback_{site_id}"
+    try:
+        saved=set_exclusions(site_id,st.session_state[f"exclude_paths_{site_id}"])
+        st.session_state[feedback_key]=(
+            "success",f"{len(saved)} Ausschlusspfade in SQLite gespeichert und geprüft.")
+    except (ValueError,RuntimeError,OSError,sqlite3.Error) as exc:
+        st.session_state[feedback_key]=("error",str(exc))
+
+
 if "ws_compact_nav" not in st.session_state:
     st.session_state["ws_compact_nav"] = False
 compact_nav=bool(st.session_state["ws_compact_nav"])
@@ -475,6 +488,27 @@ if current_page == "Websites verwalten":
                        "Nur Pfade ab / verwenden; keine Platzhalter nötig. "
                        "Leere Zeilen und Kommentarzeilen mit # sind erlaubt. "
                        "Die Startadresse selbst darf nicht ausgeschlossen werden.")
+            stored_rules=current.get("exclude_paths",[])
+            st.button("💾 Ausschlussliste speichern",
+                key=f"save_exclusions_{entry['id']}",
+                on_click=save_site_exclusion_list,
+                args=(entry["id"],),type="primary")
+            notice=st.session_state.get(f"exclude_feedback_{entry['id']}")
+            if notice:
+                if notice[0]=="success":
+                    st.success(notice[1])
+                else:
+                    st.error(notice[1])
+            try:
+                pending_rules=parse_excludes(exclusion_text)
+                if pending_rules!=stored_rules:
+                    st.warning("Die Ausschlussliste enthält noch nicht gespeicherte Änderungen.")
+            except ValueError as exc:
+                st.warning("Eingabe prüfen: "+str(exc))
+            st.caption(f"**Tatsächlich gespeicherte Ausschlussregeln: {len(stored_rules)}**")
+            if stored_rules:
+                with st.expander("Gespeicherte Ausschlusspfade anzeigen"):
+                    st.code("\n".join(stored_rules),language="text")
             with st.expander("Erweiterte Browser-Einstellungen"):
                 selector = st.text_input("CSS-Selektor, auf den gewartet werden soll",
                     value=current["wait_selector"], key=f"selector_{entry['id']}")
@@ -485,9 +519,12 @@ if current_page == "Websites verwalten":
                 try:
                     set_settings(entry["id"],mode,selector,int(delay),scope=scope,
                                  exclude_paths=exclusion_text)
-                    st.success("Einstellungen gespeichert.")
-                    st.rerun()
-                except ValueError as exc:
+                    verified=get_capture(entry["id"])
+                    if verified["exclude_paths"]!=parse_excludes(exclusion_text):
+                        raise RuntimeError("Ausschlussliste nach dem Speichern nicht auffindbar.")
+                    st.success(f"Erfassungseinstellungen und {len(verified['exclude_paths'])} "
+                               "Ausschlusspfade dauerhaft gespeichert.")
+                except (ValueError,RuntimeError,OSError,sqlite3.Error) as exc:
                     st.error(str(exc))
             with st.expander("⚠️ Website entfernen", expanded=False):
                 deletion = st.checkbox("Auch alle gespeicherten Snapshots dieser Website löschen",
