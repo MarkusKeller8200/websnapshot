@@ -17,6 +17,7 @@ from websnapshot.document_properties import display_properties
 from websnapshot.jobs import launch, latest, running, recover_interrupted, request_cancel, snapshot_job
 from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
+from websnapshot.link_exclusions import stats as excluded_link_stats, page as excluded_link_page, csv_page as excluded_link_csv_page
 from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
 from websnapshot.crawl_scope import SCOPES, effective_scope, logical_root
 from websnapshot.versions import kind, effective_pages, effective_page_metadata, remove_snapshot
@@ -594,6 +595,43 @@ if current_page == "Snapshot-Verwaltung":
                 st.write("URL-Quellen",diag["sources"])
                 st.write("Bearbeitungsstatus",diag["statuses"])
                 st.write("Ausschlussgründe",diag["reasons"])
+                excluded_summary=excluded_link_stats(selected)
+                st.markdown("**Links-pro-Seite: ausgelassene URLs und Quellseiten**")
+                st.caption(f"{excluded_summary['excluded_links']:,} ausgelassene Links "
+                           f"auf {excluded_summary['affected_pages']:,} Seiten."
+                           .replace(",", "'"))
+                if excluded_summary["excluded_links"]:
+                    exclusion_query=st.text_input(
+                        "Quellseiten und ausgeschlossene URLs durchsuchen",
+                        placeholder="Pfad oder URL suchen …",
+                        key=f"excluded_query_{selected}")
+                    exclusion_total,excluded_rows=excluded_link_page(
+                        selected,offset=0,limit=200,source_search=exclusion_query)
+                    st.dataframe(excluded_rows,hide_index=True,width="stretch",
+                        column_config={
+                            "Quellseite":st.column_config.LinkColumn(
+                                "Quellseite",width=340),
+                            "Ausgeschlossene URL":st.column_config.LinkColumn(
+                                "Nicht weiterverfolgte URL")})
+                    st.caption(f"{len(excluded_rows)} von {exclusion_total} "
+                               "Treffern sichtbar. CSV-Export in Blöcken "
+                               "mit höchstens 10'000 Zeilen.")
+                    max_chunk=max(1,(exclusion_total+9999)//10000)
+                    chunk=st.number_input("Exportblock",
+                        min_value=1,max_value=max_chunk,value=1,step=1,
+                        key=f"excluded_chunk_{selected}")
+                    if st.button("Ausschlussprotokoll als CSV vorbereiten",
+                                 key=f"excluded_prep_{selected}"):
+                        st.session_state[f"excluded_file_{selected}"] = (
+                            excluded_link_csv_page(selected,
+                                offset=(chunk-1)*10000,limit=10000,
+                                source_search=exclusion_query))
+                    prepared=st.session_state.get(f"excluded_file_{selected}")
+                    if prepared is not None:
+                        st.download_button("Ausgeschlossene URLs als CSV herunterladen",
+                            data=prepared,mime="text/csv",
+                            file_name=f"websnapshot_{selected}_link_ausschluesse.csv",
+                            key=f"excluded_export_{selected}")
                 a,b=st.columns(2)
                 path_rows=[{"Pfad":path,"Varianten":count}
                            for path,count in diag["paths"]]
@@ -1148,6 +1186,14 @@ if current_page == "Einstellungen":
             min_value=1.0,max_value=60.0,
             value=float(global_config.get("page_timeout",3.0)),
             step=0.5)
+        links_per_page=st.number_input("Links-pro-Seite-Limit",
+            min_value=1,max_value=10000,
+            value=int(global_config.get("links_per_page",1000)),step=100,
+            help="Maximal berücksichtigte Links pro HTML-Seite. Jede wegen des "
+                 "Limits ausgeschlossene URL wird mit ihrer Quellseite protokolliert.")
+        st.caption("Standard: 1'000. Die betroffenen Seiten und URLs findest du "
+                   "nach dem Lauf unter «Snapshot-Verwaltung → Crawl-Diagnose».")
+
         http_workers=st.slider("Parallele statische HTTP-Aufrufe",
             min_value=1,max_value=10,
             value=int(global_config.get("http_workers",3)))
@@ -1167,7 +1213,8 @@ if current_page == "Einstellungen":
                         sitemap_height=int(default_sitemap),
                         discovery_limit=int(discovery_limit),
                         page_timeout=float(page_timeout),
-                        http_workers=int(http_workers))
+                        http_workers=int(http_workers),
+                        links_per_page=int(links_per_page))
             st.success("Globale Einstellungen gespeichert.")
             st.rerun()
         except ValueError as exc:
