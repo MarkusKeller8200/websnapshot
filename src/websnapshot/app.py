@@ -16,6 +16,7 @@ from websnapshot.jobs import launch, latest, running, recover_interrupted, reque
 from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
 from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
+from websnapshot.crawl_scope import SCOPES, effective_scope, logical_root
 from websnapshot.versions import kind, effective_pages, effective_page_metadata, remove_snapshot
 from urllib.parse import urlsplit
 from hashlib import sha1
@@ -219,6 +220,9 @@ def job_controls(site_id, url, limit, snap_kind):
                            f"Browser mit dynamischen Inhalten (Indiz): {info.get('browser_dynamic_pages',0)} · "
                            f"Unklar: {info.get('browser_unknown_pages',0)} · "
                            f"Timeouts: {info.get('timeouts',0)}")
+        if info.get("crawl_scope")=="path":
+            st.caption(f"Unterbereich aktiv · Ausserhalb des Bereichs verworfene "
+                       f"URL-Kandidaten: {info.get('scope_excluded',0):,}".replace(",", "'"))
         warnings=info.get("limit_warnings",[])
         if warnings:
             st.warning("**Schutzlimit erreicht**\n\n" + "\n\n".join(
@@ -314,7 +318,12 @@ if current_page == "Websites verwalten":
     st.subheader("Websites verwalten")
     with st.expander("➕ Neue Website hinzufügen", expanded=False):
         with st.form("add_site", clear_on_submit=True):
-            url = st.text_input("Neue Website (https://...)")
+            url = st.text_input("Neue Website oder Unterseite (https://...)",
+                placeholder="https://www.zh.ch/de/bildung.html")
+            st.caption("Ein Unterseiten-Link wird standardmässig nur mitsamt seinen "
+                       "Unterseiten erfasst. Bei Websites mit .html-Endungen die "
+                       "tatsächliche Startadresse verwenden; z. B. "
+                       "https://www.zh.ch/de/bildung.html.")
             if st.form_submit_button("Website hinzufügen"):
                 try:
                     add_site(url)
@@ -337,6 +346,19 @@ if current_page == "Websites verwalten":
             with note_col:
                 if mode != STATIC:
                     st.info("Browsermodus benötigt Playwright und Chromium.")
+            scope=st.selectbox("Erfassungsbereich",
+                options=list(SCOPES),format_func=lambda value:SCOPES[value],
+                index=list(SCOPES).index(current.get("crawl_scope","auto")),
+                key=f"scope_{entry['id']}")
+            resolved=effective_scope(entry["url"],scope)
+            if resolved=="path":
+                st.info("Unterbereich aktiv: Die Startseite und URLs unter "
+                        f"**{logical_root(entry['url'])}/** werden erfasst. "
+                        "PDF-/Word-Dateien, die von diesen Seiten direkt verlinkt "
+                        "werden, können auch in einem gemeinsamen Dokumentverzeichnis liegen.")
+            else:
+                st.caption("Gesamte Domain: Interne Links dürfen in andere "
+                           "Pfadbereiche der gleichen Domain führen.")
             with st.expander("Erweiterte Browser-Einstellungen"):
                 selector = st.text_input("CSS-Selektor, auf den gewartet werden soll",
                     value=current["wait_selector"], key=f"selector_{entry['id']}")
@@ -345,7 +367,7 @@ if current_page == "Websites verwalten":
                     key=f"delay_{entry['id']}")
             if st.button("💾 Erfassungseinstellungen speichern", key=f"settings_{entry['id']}"):
                 try:
-                    set_settings(entry["id"],mode,selector,int(delay))
+                    set_settings(entry["id"],mode,selector,int(delay),scope=scope)
                     st.success("Einstellungen gespeichert.")
                     st.rerun()
                 except ValueError as exc:
@@ -382,6 +404,8 @@ if current_page == "Snapshot starten":
                 limit=st.number_input("Maximal besuchte URLs",10,100000,int(global_config["visit_limit"]),step=100,
                                       key=f"snapshot_limit_{site_id}")
             st.caption(f"Modus: {MODES[capture['mode']]} · "
+                       f"Bereich: {SCOPES[capture.get('crawl_scope','auto')]} "
+                       f"({effective_scope(site_options[site_id],capture.get('crawl_scope','auto'))}) · "
                        f"Discovery-Limit: {global_config['discovery_limit']:,} · "
                        f"Timeout: {global_config['page_timeout']} s · "
                        f"Parallele HTTP-Aufrufe: {global_config['http_workers']}. "
