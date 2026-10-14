@@ -133,6 +133,10 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
                  f"{result['pages']} Seiten, {result['documents']} Dokumente",
                  json.dumps(final,ensure_ascii=False),job_id))
             db.commit()
+        if result.get("document_statuses"):
+            summary=", ".join(f"{status}: {count}" for status,count
+                              in sorted(result["document_statuses"].items()))
+            log_write(job_id,"INFO","Dokument-URL-Prüfung (HTTP HEAD): "+summary,data)
         if result.get("exclude_paths"):
             log_write(job_id,"INFO",
                 f"Benutzerdefinierte Pfadregeln: {len(result['exclude_paths'])}; "
