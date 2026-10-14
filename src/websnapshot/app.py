@@ -14,12 +14,13 @@ from websnapshot.inventory import dashboard, discover_and_snapshot, remove_site,
 from websnapshot.documents import list_documents, download_selected
 from websnapshot.jobs import launch, latest, running, recover_interrupted
 from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
+from websnapshot.versions import kind, effective_pages, remove_snapshot
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide")
 st.title("WebSnapshot")
-st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.5.0")
+st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.6.0")
 
 tab_overview, tab_sites, tab_snapshots, tab_map, tab_system = st.tabs(
     ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Sitemap", "Updates"])
@@ -77,15 +78,14 @@ with tab_sites:
             mode = st.selectbox("Erfassungsmodus", options=list(MODES),
                 format_func=lambda m: MODES[m], index=list(MODES).index(current["mode"]),
                 key=f"mode_{entry['id']}")
-            with st.expander("Erweiterte Browser-Einstellungen (für 0.6.0)"):
+            with st.expander("Browser-Einstellungen"):
                 selector = st.text_input("CSS-Selektor, auf den gewartet werden soll",
                     value=current["wait_selector"], key=f"selector_{entry['id']}")
                 delay = st.number_input("Zusätzliche Wartezeit in Millisekunden", min_value=0,
                     max_value=30000, value=current["wait_ms"], step=500,
                     key=f"delay_{entry['id']}")
             if mode != STATIC:
-                st.warning("Browsermodus ist erst ab 0.6.0 verfügbar. "
-                           "Es wird kein statischer Snapshot als Ersatz gestartet.")
+                st.info("Browsermodus benötigt Playwright und Chromium.")
             if st.button("Erfassungseinstellungen speichern", key=f"settings_{entry['id']}"):
                 try:
                     set_settings(entry["id"],mode,selector,int(delay))
@@ -114,11 +114,12 @@ with tab_snapshots:
         st.caption(f"Erfassungsmodus: **{MODES[capture['mode']]}** – "
                    "änderbar unter «Websites verwalten».")
         if capture["mode"] != STATIC:
-            st.warning("Browsermodus ist vorbereitet, aber in 0.5.0 nicht ausführbar.")
+            st.info("Browsermodus rendert JavaScript-Inhalte mit Chromium.")
         limit = st.number_input("Sicherheitslimit: maximal besuchte URLs", 10, 20000, 1000,
                                 step=100)
         st.caption("Automatische Sitemaps und rekursive Linksuche ohne feste Linktiefe. "
                    "Das Schutzlimit verhindert endlose Crawls. robots.txt wird berücksichtigt.")
+        snap_kind = st.radio("Snapshot-Art",["full","partial"],format_func=lambda x: "Full / Baseline" if x=="full" else "Partial / Delta",horizontal=True)
         @st.fragment(run_every="2s")
         def show_job():
             job = latest(site_id)
@@ -143,9 +144,9 @@ with tab_snapshots:
             return job
         current_job = show_job()
         if st.button("Neuen Snapshot im Hintergrund starten", type="primary",
-                     disabled=(capture["mode"] != STATIC or bool(current_job and current_job["state"] in ("queued","running")))):
+                     disabled=(bool(current_job and current_job["state"] in ("queued","running")) or (snap_kind=="partial" and not runs(site_id)))):
             try:
-                started, job_id = launch(site_id,options[site_id],int(limit))
+                started, job_id = launch(site_id,options[site_id],int(limit),snapshot_kind=snap_kind)
             except ValueError as exc:
                 st.error(str(exc))
                 st.stop()
@@ -156,7 +157,7 @@ with tab_snapshots:
             st.rerun()
         history = runs(site_id)
         st.subheader("Snapshot-Verlauf")
-        st.dataframe([{"ID":r[0],"Zeitpunkt (UTC)":r[1],"Status":r[2],
+        st.dataframe([{"ID":r[0],"Typ":kind(r[0])[0],"Zeitpunkt (UTC)":r[1],"Status":r[2],
                        "Fehler":len(json.loads(r[3]))} for r in history],
                      hide_index=True, use_container_width=True)
         if history:
