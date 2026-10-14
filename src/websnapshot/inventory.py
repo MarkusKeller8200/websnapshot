@@ -544,9 +544,10 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
             progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen",**kw),
             parent_id=parent_id,allowed=document_head_allowed)
     else:
+        # Full crawls already filter discovered links against robots rules
+        # before enqueuing. Preserve the original inventory call signature.
         inventory_documents(run_id,site_id,docs,session,data,
-            progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen",**kw),
-            allowed=document_head_allowed)
+            progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen",**kw))
     doc_statuses=status_summary(run_id,data)
     timings.observe("document_metadata",perf_counter()-metadata_started,"HEAD")
     save_references(run_id,document_references,data)
