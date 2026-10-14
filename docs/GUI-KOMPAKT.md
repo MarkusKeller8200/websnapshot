@@ -9,3 +9,11 @@ Die Bedienung ist bereits im Quellcode angepasst. Für die Überprüfung auf Win
 ## Snapshot-Zentrale – übersichtlicher Aufbau
 
 Im Bereich «Snapshots & Vergleich» sind die Einstellungen zum Starten eines Jobs und die Live-Anzeige direkt oben angeordnet. Darunter folgt das kompakte Snapshot-Archiv. Die weiteren Funktionen befinden sich in vier Unterregistern: «Änderungen vergleichen», «Dokumente», «Crawl-Diagnose» und «Verwaltung». Dadurch bleiben grosse Diagnoseauswertungen und Dokumentlisten verborgen, solange sie nicht benötigt werden. Die bestehende Full-/Partial-Auswahl, exklusive Job-Sperre, Dokumentdownloads, Vergleichsexporte und Löschschutzregeln bleiben erhalten.
+
+## Dauerhafte Job-Zusammenfassung und Fehlerprotokoll
+
+Im «Snapshot-Archiv» wird die Gesamtlaufzeit im Format `hh:mm:ss` aus den in SQLite gespeicherten UTC-Zeitstempeln berechnet. Der Auswahlbereich «Zusammenfassung und Fehlerprotokoll» zeigt für jeden Snapshot dessen Job-ID, Start, Ende, Laufzeit, Status, Erfassungsmodus, Besuchslimit, URL, zuletzt protokollierte Phase, entdeckte und besuchte URLs, archivierte HTML-Seiten, gefundene Dokumente, offene URLs, übersprungene URLs, Sitemaps sowie – bei Delta-Läufen – geänderte Seiten und Vergleich zur Full-Baseline.
+
+Fehler werden bereits in `runs.errors` als JSON gespeichert; darunter sind URL-Fehler, Sitemap-Probleme und überschrittene Sicherheitslimits. Der neue Bereich stellt alle Meldungen einzeln in einer Tabelle dar und ermöglicht ihren Export als JSON. Daneben lässt sich eine vollständige Job-Zusammenfassung inklusive Original-Fortschrittsdaten, Fehlermeldungen und Zeitstempeln exportieren.
+
+Die Tabelle `jobs` enthält weiterhin die Start- und Endzeit sowie den letzten Fortschrittsstand. Neu bleiben auch sämtliche zuvor aufgezeichneten Fortschrittsfelder beim Abschluss erhalten und die Konfiguration bei Start des Jobs wird gespeichert. Die Einzelupdates jedes Fortschrittsschritts sind **keine** Zeitreihe; es wird nur der letzte Zustand persistent vorgehalten. Bereits existierende Jobs können anhand der gespeicherten Zeitstempel rückwirkend Laufzeitinformationen anzeigen, soweit diese vorhanden sind; fehlende frühere Erfassungsfelder lassen sich nicht zuverlässig ergänzen.
