@@ -58,7 +58,7 @@ def _fetch(session: requests.Session, url: str, max_bytes: int = MAX_BYTES,
         return bytes(content), kind
 
 
-def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
+def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                           data: Path = DATA, progress=None, snapshot_kind: str = 'full',
                           config: dict | None = None) -> tuple[int, dict]:
     """Discover sitemap and HTML links; stop at transparent safety limits.
