@@ -16,7 +16,7 @@ from websnapshot.documents import list_documents, download_selected
 from websnapshot.document_metadata import probe_selected, list_references
 from websnapshot.document_properties import display_properties
 from websnapshot.date_format import format_datetime
-from websnapshot.snapshot_labels import snapshot_choice_label, snapshot_choices, snapshot_type_label
+from websnapshot.snapshot_labels import snapshot_choices, snapshot_type_label
 from websnapshot.jobs import launch, latest, running, recover_interrupted, request_cancel, snapshot_job
 from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
@@ -898,7 +898,8 @@ if current_page == "Dokumente":
         else:
             snapshot_labels=snapshot_choices(history,kind)
             doc_run = st.selectbox("Dokumentinventar", [r[0] for r in history],
-                                   key=f"document_run_{site_id}")
+                                   key=f"document_run_{site_id}",
+                                   format_func=lambda i:snapshot_labels[i])
             docs = list_documents(doc_run)
             st.caption("PDF-, Word-, Excel-, TXT- und CSV-Dateien werden ausschliesslich nach Auswahl "
                        "heruntergeladen. Suche und Auswahl gelten nur für diesen Snapshot.")
@@ -1151,7 +1152,7 @@ if current_page == "Sitemap":
             snapshot_labels=snapshot_choices(history,kind)
             selected_run=st.selectbox("Snapshot",
                 [r[0] for r in history],key=f"sitemap_run_{site_id}",
-                format_func=lambda i:snapshot_labels[i]
+                format_func=lambda i:snapshot_labels[i])
             # Read URLs/titles/lengths from SQLite, not potentially huge HTML bodies.
             table=effective_page_metadata(selected_run)
             tools_left,tools_right=st.columns([3,2],vertical_alignment="bottom")
