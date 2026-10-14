@@ -117,3 +117,15 @@ Eine zuvor erfasste, bei der nächsten Inventarisierung aber fehlende URL bleibt
 - Statusdefinition: `Neu gefunden`, `Unverändert laut ETag`, `Unverändert laut Metadaten`, `Metadaten geändert`, `Nicht prüfbar`. **Keine Gleichsetzung von Metadatenänderung und sicher verifiziertem Inhaltswechsel.** Dokumente werden zunächst nicht inhaltlich verglichen.
 
 **Offene Aufgaben:** Vollständiger SHA-256-Vergleich heruntergeladener Versionen, dauerhafte Dokumenthistorie unabhängig von Downloads, echter Crawlabbruch/Fortsetzung, Download-Fortschrittsanzeige pro Datei und die Absicherung gegen fortgeschrittene Server-/Netzwerkangriffe. Die in Version 0.3.0 hinzugefügten Funktionen benötigen weitere Praxistests.
+
+## 12. Version 0.4.0 – Asynchrone Erfassung, Jobs und Sitemap
+
+- Je Website maximal ein wartender/aktiver Snapshot-Job, mit atomarer SQLite-Sperre (partieller Unique-Index); unterschiedliche Websites können gleichzeitig erfasst werden.
+- Threadpool mit maximal drei Worker-Threads, Status `queued/running/complete/failed/interrupted`, Fortschrittsdaten und Laufzeit. UI bleibt während des Laufs nutzbar und fragt alle zwei Sekunden Status ab.
+- Laufzeitgrenze: Hintergrundverarbeitung nur solange der lokale Streamlit-Prozess läuft. Ein Crash benötigt derzeit manuelle Freigabe verwaister Sperren; kein automatischer Wiederanlauf.
+- Unter «Sitemap» lassen sich HTML-Seiten eines beliebigen Snapshots nach URL-Pfadgruppen durchsuchen und Original-URLs im Browser öffnen. Es ist noch kein vollwertiger rekursiver Navigationsbaum.
+- Updates während laufender Jobs unterbunden.
+
+### Architektur dynamischer Webseiten (geplant)
+
+Drei Modi pro Website: statisch (requests), browsergestützt (Playwright/Chromium) oder automatisch nach Bewertung des HTML-Ergebnisses. Der Browsermodus muss asynchron geladene Inhalte mit domcontentloaded und spezifischen Wartebedingungen erfassen, ohne beliebig auf networkidle zu warten. Cookies/Popups nur gemäss konfigurierter Website-Regeln. HTML nach Rendering für dieselbe Text-/Link-Pipeline normalisieren; API-Anfragen nicht ungeprüft wiederverwenden. Session, Timeout, Ressourcenverbrauch, SSRF/Redirect-Prüfungen und Downloadbegrenzung explizit absichern. Hintergrundthreads allein bieten keine Sandbox gegen fehlerhafte Drittinhalte.
