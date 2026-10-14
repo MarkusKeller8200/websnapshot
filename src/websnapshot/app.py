@@ -45,8 +45,10 @@ def job_controls(site_id, url, limit, snap_kind):
         if info.get("snapshot_kind")=="partial":
             percent = float(info.get("percent",0) or 0)
             st.progress(min(1.0,max(0.0,percent/100)),text=f"{percent:.1f}% der bekannten URLs geprüft")
-            st.metric("Textänderungen zum Vorgänger",info.get("changed",0))
-            st.caption(f"Vergleich mit Snapshot #{info.get('baseline_id','?')} inklusive geerbter Inhalte")
+            x,y=st.columns(2)
+            x.metric("Geänderte geprüfte Seiten zum Vorgänger",info.get("changed",0))
+            y.metric("Geänderte geprüfte Seiten zur Full-Baseline",info.get("changed_since_full",0))
+            st.caption(f"Vorgänger #{info.get('baseline_id','?')} · Full-Baseline #{info.get('full_baseline_id','?')} · nur erfolgreich geprüfte URLs")
         else:
             st.caption(f"{info.get('discovered',0)} URLs entdeckt · {info.get('visited',0)} besucht · Phase: {info.get('phase','Wartet')}")
         if active:
@@ -79,7 +81,7 @@ def running_dashboard():
         st.write(f"**{entry['url']}** · Job #{job['id']} · gestartet {start_time.strftime('%d.%m. %H:%M')} UTC · Laufzeit {elapsed//60:02d}:{elapsed%60:02d}")
         if info.get("snapshot_kind")=="partial":
             percent=float(info.get("percent",0) or 0)
-            st.progress(min(1,max(0,percent/100)),text=f"Partial: {percent:.1f}% · {info.get('changed',0)} Änderungen zum Vorgänger")
+            st.progress(min(1,max(0,percent/100)),text=f"Partial: {percent:.1f}% · {info.get('changed',0)} zum Vorgänger · {info.get('changed_since_full',0)} zur Full-Baseline")
         else:
             st.caption(f"Full: {info.get('pages',0)} Seiten · {info.get('documents',0)} Dokumente · {info.get('discovered',0)} URLs gefunden")
     if not found:
