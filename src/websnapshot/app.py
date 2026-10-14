@@ -65,7 +65,28 @@ def job_controls(site_id, url, limit, snap_kind):
             y.metric("Geänderte geprüfte Seiten zur Full-Baseline",info.get("changed_since_full",0))
             st.caption(f"Vorgänger #{info.get('baseline_id','?')} · Full-Baseline #{info.get('full_baseline_id','?')} · nur erfolgreich geprüfte URLs")
         else:
-            st.caption(f"{info.get('discovered',0)} URLs entdeckt · {info.get('visited',0)} besucht · Phase: {info.get('phase','Wartet')}")
+            discovered=int(info.get("discovered",0) or 0)
+            visited=int(info.get("visited",0) or 0)
+            discovery_limit=int(info.get("discovery_limit",10000) or 10000)
+            visit_limit=int(info.get("visit_limit",limit) or limit)
+            st.caption(f"Phase: {info.get('phase','Wartet')} · "
+                       f"{info.get('pending','—')} URLs in Warteschlange")
+            bar_left,bar_right=st.columns(2)
+            with bar_left:
+                st.progress(min(1.,discovered/max(discovery_limit,1)),
+                            text=f"Entdeckte URLs: {discovered:,} / {discovery_limit:,}".replace(",", "'"))
+            with bar_right:
+                st.progress(min(1.,visited/max(visit_limit,1)),
+                            text=f"Besuchte URLs: {visited:,} / {visit_limit:,}".replace(",", "'"))
+        warnings=info.get("limit_warnings",[])
+        if warnings:
+            st.warning("**Schutzlimit erreicht**\n\n" + "\n\n".join(
+                f"• {warning}" for warning in warnings))
+            exclusions=info.get("excluded_limits",{})
+            if exclusions:
+                st.caption("Abgewiesene URL-Kandidaten: "
+                    f"{sum(int(v) for v in exclusions.values()):,}".replace(",", "'")
+                    + " · Detailwerte werden im Job-Protokoll gespeichert.")
         if active:
             st.info("Für diese Website läuft bereits ein Job.")
             if st.button("Job kontrolliert abbrechen",key=f"cancel_{site_id}"):
@@ -102,6 +123,8 @@ def running_dashboard():
             st.progress(min(1,max(0,percent/100)),text=f"Partial: {percent:.1f}% · {info.get('changed',0)} zum Vorgänger · {info.get('changed_since_full',0)} zur Full-Baseline")
         else:
             st.caption(f"Full: {info.get('pages',0)} Seiten · {info.get('documents',0)} Dokumente · {info.get('discovered',0)} URLs gefunden")
+            if info.get("limit_warnings"):
+                st.warning("Schutzlimit erreicht: " + " · ".join(info["limit_warnings"]))
     if not found:
         st.caption("Keine aktiven Jobs.")
 
