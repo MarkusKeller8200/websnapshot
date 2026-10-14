@@ -4,7 +4,7 @@ Lokale Anwendung für manuell gestartete Website-Snapshots, Versionsvergleiche u
 
 ## Was macht WebSnapshot?
 
-WebSnapshot 0.3.0 ist eine lokal betriebene Python-Anwendung zur manuellen Erfassung, Archivierung und zum Vergleich von Webseiten. So lässt sich beispielsweise heute ein Snapshot einer Website erstellen und nach einem Monat feststellen, welche Textinhalte sich verändert haben.
+WebSnapshot 0.4.0 ist eine lokal betriebene Python-Anwendung zur manuellen Erfassung, Archivierung und zum Vergleich von Webseiten. So lässt sich beispielsweise heute ein Snapshot einer Website erstellen und nach einem Monat feststellen, welche Textinhalte sich verändert haben.
 
 ### Arbeitsablauf
 
@@ -36,7 +36,7 @@ WebSnapshot 0.3.0 ist eine lokal betriebene Python-Anwendung zur manuellen Erfas
 | Zwei Snapshots vergleichen | Implementiert |
 | Neue, geänderte und fehlende URLs auflisten | Implementiert |
 | HTML-Änderungsbericht herunterladen | Implementiert |
-| PDF- und Word-Dokumentlinks inventarisieren | Implementiert; ohne Inhaltsdownload |\n| PDF- und Word-Dokumentinhalte auswerten | Geplant |\n| Dashboard mit Website-, Snapshot- und Speicherkennzahlen | Implementiert |\n| Websites hinzufügen und entfernen | Implementiert |\n| Warnung bei ältesten Snapshots über 30 Tagen | Implementiert |\n| GitHub-Update über die Anwendung | Implementiert (Neuladen; kein garantierter Prozessneustart) |\n| Live-Status mit Laufzeit, Seiten- und Dokumentzählern | Implementiert |\n| Dokumentliste mit selektivem Download | Implementiert für PDF, DOC und DOCX |\n| Dokumentänderungen erkennen | ETag / Last-Modified / Dateigrösse; kein Inhaltsvergleich ohne Download |
+| PDF- und Word-Dokumentlinks inventarisieren | Implementiert; ohne Inhaltsdownload |\n| PDF- und Word-Dokumentinhalte auswerten | Geplant |\n| Dashboard mit Website-, Snapshot- und Speicherkennzahlen | Implementiert |\n| Websites hinzufügen und entfernen | Implementiert |\n| Warnung bei ältesten Snapshots über 30 Tagen | Implementiert |\n| GitHub-Update über die Anwendung | Implementiert (Neuladen; kein garantierter Prozessneustart) |\n| Live-Status mit Laufzeit, Seiten- und Dokumentzählern | Implementiert |\n| Hintergrund-Snapshot mit exklusiver Job-Sperre je Website | Implementiert |\n| Navigierbare Sitemap mit Links zu Originalseiten | Implementiert (URL-Pfadgruppen) |\n| Dokumentliste mit selektivem Download | Implementiert für PDF, DOC und DOCX |\n| Dokumentänderungen erkennen | ETag / Last-Modified / Dateigrösse; kein Inhaltsvergleich ohne Download |
 | Screenshots | Geplant |
 | Dynamische JavaScript-Seiten mit Playwright erfassen | Geplant |
 | KI-Zusammenfassungen und Relevanzbewertung | Geplant |
@@ -149,3 +149,15 @@ Für jeden **neuen** Snapshot werden erkannte PDF-, DOC- und DOCX-Adressen in de
 
 ### Wichtige Einschränkungen
 Die Erfassung selbst lädt **keine Dokumentinhalte** herunter, fordert aber zur Statusprüfung leichte HEAD-Antworten an. URLs ausserhalb des ursprünglichen Hosts werden nicht verfolgt; Redirects werden nicht automatisch aufgelöst. Die Zahl gefundener Dokumente entspricht den während des Crawls erreichten Links und ist kein Vollständigkeitsnachweis. Robuste Prüfung von DNS-Rebinding, Download-Dateisignaturen, Unterbrechung und Wiederaufnahme bleiben für eine gehärtete Version vorgesehen.
+
+## Version 0.4.0 – Hintergrund-Jobs und Sitemap
+
+Ein Snapshot wird nun als lokaler Hintergrund-Thread gestartet. Das Dashboard und andere Webseiten bleiben währenddessen bedienbar. Laufende Jobs werden in der SQLite-Tabelle `jobs` erfasst; eine eindeutige partielle Datenbank-Indexsperre erlaubt **pro Website nur einen aktiven oder wartenden Job gleichzeitig**, auch bei mehrfachen Klicks oder mehreren Browser-Tabs. Andere Websites dürfen parallel verarbeitet werden (maximal drei Worker). Fortschrittsdaten werden alle zwei Sekunden aus der Datenbank gelesen.
+
+**Wichtig:** Hintergrund bedeutet hier **innerhalb des laufenden lokalen Streamlit-Prozesses**, nicht als unabhängiger Windows-Dienst. Die Anwendung muss während des Crawls geöffnet bleiben. Nach einem unerwarteten Prozessende können Job-Sperren bestehen bleiben; im Tab «Updates» können solche Sperren nach Kontrolle manuell als unterbrochen markiert werden. Einen Job-Abbruch oder automatischen Wiederanlauf gibt es noch nicht. Updates sind während aktiver Jobs gesperrt.
+
+### Sitemap-Navigation
+Ein neuer Tab «Sitemap» zeigt die **im ausgewählten Snapshot tatsächlich archivierten HTML-Seiten**, nach erstem URL-Pfadsegment gruppiert, durchsuchbar und mit einem Link «Öffnen» zur Original-URL im Browser. Dies ist eine Navigationsübersicht, keine Zusicherung über alle existierenden Seiten. Eine verschachtelte Baumdarstellung inklusive Dokumente ist als weiterer Ausbau geplant.
+
+### Dynamische Websites
+Viele moderne Websites rendern Inhalte erst im Browser über JavaScript. Die bisherige `requests`-Erfassung erfasst nur ausgeliefertes HTML; nachgeladene Inhalte können fehlen. Vorgesehen ist ein **optionaler Playwright-Modus pro Website**: echtes Chromium mit JavaScript, gezielte Wartebedingungen auf relevante Seitenelemente, Begrenzungen für Laufzeit/Seitenzahl, Wiederverwendung einer Browser-Sitzung und getrennte Erkennung dynamisch verlinkter URLs. Er bleibt vorerst **geplant und ist in 0.4.0 noch nicht implementiert**. Login- und geschützte Bereiche erfordern zusätzliche Sicherheits- und Berechtigungskonzepte.
