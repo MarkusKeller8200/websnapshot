@@ -2,7 +2,7 @@
 from urllib.parse import urlsplit
 from .core import normalize_url
 
-DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx")
+DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx", ".xlsx", ".xls", ".txt", ".csv")
 
 def related_document(url: str, website: str) -> bool:
     """Allow explicit PDF/Word links on docs.<website-host>, not foreign-site crawling."""
