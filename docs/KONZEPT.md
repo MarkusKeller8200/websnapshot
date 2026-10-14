@@ -93,3 +93,16 @@ Eine zuvor erfasste, bei der nächsten Inventarisierung aber fehlende URL bleibt
 - Wiederaufnahme eines unterbrochenen Crawls ist möglich.
 - Erfassungsgrad und Umfangseinschränkungen sind in Oberfläche und Änderungsbericht sichtbar.
 - Nicht erfasste URLs werden nicht automatisch als gelöschte Seiten eingestuft.
+
+## 10. Umsetzung Version 0.2.0 (14.10.2026)
+
+- Streamlit-Dashboard mit Gesamt- und Website-Kennzahlen: Websites, letzter HTML-Seitenbestand, Dokumentlinks, Snapshot-Anzahl, ältestes/neuestes Datum, Speichermengen.
+- Ältester Snapshot >30 Tage: roter Indikator. 30 Tage oder jünger: grün. Ohne Snapshot: neutral.
+- Websites hinzufügen und entfernen; beim Entfernen optionale Löschung der Historie (ohne Auswahl bleiben verwaiste Datensätze erhalten).
+- Sitemap-Discovery einschliesslich Sitemap-Indizes und rekursive HTML-Linksuche ohne feste Tiefe. Schutzlimit für maximal besuchte URLs sowie Grenzen für Sitemap-Anzahl und Antwortgrössen. Nur identischer Host, keine Weiterleitungen.
+- PDF/Office-Dateien werden **nur als Links gezählt**, nicht heruntergeladen oder inhaltlich ausgewertet.
+- Updatefunktion über git pull --ff-only und lokale pip-Installation mit Neuladen der Streamlit-Sitzung. Ein vollständiger Prozess-Neustart ist **noch nicht implementiert**.
+
+**Einschränkungen:** Kein Beweis für die Vollständigkeit; Crawling ohne persistenten Wiederaufnahmestatus; keine dokumentenbezogenen Snapshots; fehlende URLs sind nicht als gelöscht nachgewiesen; Grundabsicherung gegen lokale Adressen ersetzt keine umfassende SSRF-Härtung für fremd erreichbare Server. Das Dashboard zeigt pro Website die gespeicherte Textmenge, während die tatsächliche SQLite-Dateigrösse nur insgesamt sinnvoll erfasst wird.
+
+**Nächste Aufgaben:** Fortsetzbare URL-Queue und dauerhaftes Einzel-URL-Protokoll, separater Dokument-Inventarstand je Snapshot, vollständiger sicherer Neustart nach Updates, verbesserte Crawl-Abdeckung und Tests auf Windows/macOS.
