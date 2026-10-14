@@ -7,7 +7,7 @@ import json
 import sqlite3
 from .core import DATA, database
 from .crawl_scope import SCOPE_AUTO, SCOPES
-from .url_exclusions import parse_excludes
+from .url_exclusions import parse_excludes, excluded_by
 
 STATIC = "static"
 BROWSER = "browser"
@@ -55,8 +55,11 @@ def set_settings(site_id: int, mode: str, wait_selector: str = "",
     rules = (get(site_id,data)["exclude_paths"] if exclude_paths is None
              else parse_excludes(exclude_paths))
     with sqlite3.connect(database(data)) as db:
-        if not db.execute("SELECT id FROM sites WHERE id=?", (site_id,)).fetchone():
+        site_row=db.execute("SELECT url FROM sites WHERE id=?", (site_id,)).fetchone()
+        if not site_row:
             raise ValueError("Website nicht gefunden")
+        if excluded_by(site_row[0],rules):
+            raise ValueError("Die Ausschlussliste darf die Startadresse der Website nicht sperren.")
         db.execute("""INSERT INTO site_settings(
             site_id,mode,wait_selector,wait_ms,crawl_scope,exclude_paths)
             VALUES(?,?,?,?,?,?) ON CONFLICT(site_id) DO UPDATE SET
