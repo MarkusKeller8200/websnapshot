@@ -6,6 +6,8 @@ Legacy .doc uses OLE compound files, which are intentionally not parsed yet.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import csv
+from io import StringIO
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
@@ -28,6 +30,10 @@ PROPERTY_LABELS = {
     "last_printed": "Zuletzt gedruckt",
     "total_editing_time": "Gesamtbearbeitungszeit (Minuten)",
     "template": "Vorlage",
+    "encoding": "Zeichenkodierung (ermittelt)",
+    "line_count": "Zeilen (ermittelt)",
+    "columns": "CSV-Spalten (ermittelt)",
+    "delimiter": "CSV-Trennzeichen (ermittelt)",
 }
 MAX_XML = 128_000
 
@@ -48,7 +54,7 @@ def _xml_properties(archive: ZipFile, filename: str) -> dict[str,str]:
             for node in root.iter() if node.text and node.text.strip()}
 
 
-def docx_properties(path: Path) -> dict:
+def ooxml_properties(path: Path) -> dict:
     fields={}
     with ZipFile(path) as archive:
         core=_xml_properties(archive,"docProps/core.xml")
@@ -109,16 +115,60 @@ def pdf_properties(path: Path) -> dict:
             for key,value in raw.items() if value is not None and str(value).strip()}
 
 
+def legacy_office_properties(path: Path) -> dict:
+    """Read legacy Word/Excel OLE SummaryInformation and custom company fields."""
+    import olefile
+    summary={2:"title",3:"subject",4:"creator",5:"keywords",6:"comments",
+             7:"template",8:"last_modified_by",9:"revision",
+             11:"last_printed",12:"created",13:"modified",18:"application"}
+    other={2:"category",14:"manager",15:"company"}
+    result={}
+    with olefile.OleFileIO(str(path)) as ole:
+        for stream,mapping in ((chr(5)+"SummaryInformation",summary),
+                               (chr(5)+"DocumentSummaryInformation",other)):
+            if not ole.exists(stream):
+                continue
+            for number,value in ole.getproperties(stream).items():
+                field=mapping.get(number)
+                if field and value is not None and value!="":
+                    if isinstance(value,datetime):
+                        value=value.replace(tzinfo=value.tzinfo or timezone.utc).isoformat()
+                    if isinstance(value,bytes):
+                        value=value.decode("utf-8","replace")
+                    result[field]=str(value)
+    return result
+
+
+def text_properties(path: Path, extension: str) -> dict:
+    """Plain TXT/CSV have no standard author/title/revision metadata."""
+    content=path.read_bytes()
+    try:
+        decoded=content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return {}
+    result={"encoding":"UTF-8", "line_count":len(decoded.splitlines())}
+    if extension==".csv" and decoded:
+        try:
+            dialect=csv.Sniffer().sniff(decoded[:8192],delimiters=",;\t|")
+            result["delimiter"]=dialect.delimiter
+            result["columns"]=len(next(csv.reader(StringIO(decoded),dialect),[]))
+        except csv.Error:
+            pass
+    return result
+
+
 def extract_properties(path: Path, extension: str) -> dict:
     extension=extension.lower()
     try:
-        if extension==".docx":
-            return docx_properties(path)
+        if extension in (".docx",".xlsx"):
+            return ooxml_properties(path)
+        if extension in (".doc",".xls"):
+            return legacy_office_properties(path)
         if extension==".pdf":
             return pdf_properties(path)
-        if extension==".doc":
-            return {}  # OLE SummaryInformation needs a separate legacy decoder.
-    except (BadZipFile,ET.ParseError,ValueError,TypeError,OSError) as exc:
+        if extension in (".txt",".csv"):
+            return text_properties(path,extension)
+    except (BadZipFile,ET.ParseError,ValueError,TypeError,OSError,ImportError) as exc:
         raise ValueError(f"Dokumenteigenschaften nicht lesbar: {exc}") from exc
     raise ValueError("Nicht unterstütztes Dokumentformat")
 
