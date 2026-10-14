@@ -129,3 +129,9 @@ Eine zuvor erfasste, bei der nächsten Inventarisierung aber fehlende URL bleibt
 ### Architektur dynamischer Webseiten (geplant)
 
 Drei Modi pro Website: statisch (requests), browsergestützt (Playwright/Chromium) oder automatisch nach Bewertung des HTML-Ergebnisses. Der Browsermodus muss asynchron geladene Inhalte mit domcontentloaded und spezifischen Wartebedingungen erfassen, ohne beliebig auf networkidle zu warten. Cookies/Popups nur gemäss konfigurierter Website-Regeln. HTML nach Rendering für dieselbe Text-/Link-Pipeline normalisieren; API-Anfragen nicht ungeprüft wiederverwenden. Session, Timeout, Ressourcenverbrauch, SSRF/Redirect-Prüfungen und Downloadbegrenzung explizit absichern. Hintergrundthreads allein bieten keine Sandbox gegen fehlerhafte Drittinhalte.
+
+## 13. Verbindliche Reihenfolge Browsermodus / Playwright
+
+**0.5.0:** Browsermodus als konfigurierbare Erfassungsart je Website vorbereiten (UI, Konfiguration, Auftragsmodell und Validierung). Bis zur Browser-Engine ist die Option ausdrücklich als «noch nicht verfügbar» markiert; keine vorgetäuschte dynamische Erfassung.
+
+**0.6.0:** Playwright mit Chromium als technische Ausführung des Browsermodus implementieren. Seiten nach JavaScript-Rendering auswerten, dynamisch entdeckte Links in das Inventar übernehmen, Browserressourcen begrenzen und Fehler im Hintergrund-Job protokollieren. Optionaler Automatikmodus erst nach belastbaren Tests.
