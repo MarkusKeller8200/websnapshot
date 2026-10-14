@@ -12,6 +12,8 @@ import streamlit as st
 from websnapshot.core import DATA, add_site, sites, runs, compare, report
 from websnapshot.inventory import dashboard, discover_and_snapshot, remove_site, storage_bytes
 from websnapshot.documents import list_documents, download_selected
+from websnapshot.document_metadata import probe_selected, list_references
+from websnapshot.document_properties import display_properties
 from websnapshot.jobs import launch, latest, running, recover_interrupted, request_cancel, snapshot_job
 from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
@@ -639,7 +641,7 @@ if current_page == "Dokumente":
             doc_run = st.selectbox("Dokumentinventar", [r[0] for r in history],
                                    key=f"document_run_{site_id}")
             docs = list_documents(doc_run)
-            st.caption("PDF- und Word-Dateien werden ausschliesslich nach Auswahl "
+            st.caption("PDF-, Word-, Excel-, TXT- und CSV-Dateien werden ausschliesslich nach Auswahl "
                        "heruntergeladen. Suche und Auswahl gelten nur für diesen Snapshot.")
             with st.expander("🏷️ Dokument-Renamer",expanded=True):
                 saved_profile=get_profile(site_id)
@@ -668,7 +670,7 @@ if current_page == "Dokumente":
                         st.rerun()
                     except ValueError as exc:
                         st.error(str(exc))
-                st.caption("Datum: zuerst PDF-/DOCX-Metadaten, dann HTTP Last-Modified, "
+                st.caption("Datum: zuerst verfügbare PDF-/Office-Metadaten, dann HTTP Last-Modified, "
                            "sonst Download-Datum (Ersatzwert). "
                            "Dateinamenkollisionen werden mit _2, _3 usw. gelöst; "
                            "SHA-256 bleibt ausschliesslich intern.")
@@ -676,7 +678,7 @@ if current_page == "Dokumente":
                     first=docs[0]
                     stem=filename_from_headers(first["url"])
                     extension="."+stem.rsplit(".",1)[-1].lower() if "." in stem else ".pdf"
-                    if extension not in (".pdf",".doc",".docx"):
+                    if extension not in (".pdf",".doc",".docx",".xlsx",".xls",".txt",".csv"):
                         extension=".pdf"
                     preview_date,origin=choose_date(("HTTP Last-Modified",
                                                      first.get("last_modified")))
@@ -700,7 +702,7 @@ if current_page == "Dokumente":
                 valid_urls = set(all_urls)
                 selected_urls &= valid_urls
                 search = st.text_input("Dokumente suchen",
-                    placeholder="Dateiname, PDF-Link oder Änderungsstatus suchen …",
+                    placeholder="Dateiname, Titel, Autor, Fundstelle oder Änderungsstatus suchen …",
                     key=f"{prefix}_search",help="Gross-/Kleinschreibung spielt keine Rolle.")
                 if st.session_state.get(previous_filter_key) != search:
                     st.session_state[previous_filter_key] = search
@@ -730,7 +732,12 @@ if current_page == "Dokumente":
                 if filtered_docs:
                     editor_rows = [
                         {"Auswahl":d["url"] in selected_urls,
-                         "Dokument":d["url"], "Status":d["status"],
+                         "Dokument":d["url"],"Titel":d.get("title") or "",
+                         "Autor":d.get("author") or "",
+                         "Erstellt":d.get("created") or "",
+                         "Geändert":d.get("modified") or d.get("last_modified") or "",
+                         "Status":d.get("property_status") or d["status"],
+                         "Fundstellen":d.get("references",0),
                          "Grösse (HTTP)":d["length"] or "Unbekannt",
                          "Gespeichert":bool(d["downloaded"])}
                         for d in filtered_docs]
@@ -739,16 +746,26 @@ if current_page == "Dokumente":
                         editor_rows,key=f"{prefix}_editor_{revision}",
                         hide_index=True,width="stretch",height=490,
                         num_rows="fixed",row_height=33,
-                        disabled=["Dokument","Status","Grösse (HTTP)","Gespeichert"],
+                        disabled=[key for key in editor_rows[0] if key!="Auswahl"],
                         column_config={
                             "Auswahl":st.column_config.CheckboxColumn(
-                                "Auswahl",width=column_width(editor_rows,"Auswahl"),required=True),
+                                "Auswahl",width=100,required=True),
                             "Dokument":st.column_config.LinkColumn(
                                 "Dokument / URL",width=column_width(editor_rows,"Dokument")),
-                            "Status":st.column_config.TextColumn("Änderungsstatus",
-                                width=column_width(editor_rows,"Status")),
-                            "Grösse (HTTP)":st.column_config.TextColumn("Grösse",
-                                width=column_width(editor_rows,"Grösse (HTTP)")),
+                            "Titel":st.column_config.TextColumn(
+                                "Dokumenttitel",width=column_width(editor_rows,"Titel")),
+                            "Autor":st.column_config.TextColumn(
+                                "Autor",width=column_width(editor_rows,"Autor")),
+                            "Erstellt":st.column_config.TextColumn(
+                                "Erstellt",width=column_width(editor_rows,"Erstellt")),
+                            "Geändert":st.column_config.TextColumn(
+                                "Geändert",width=column_width(editor_rows,"Geändert")),
+                            "Status":st.column_config.TextColumn(
+                                "Änderungsstatus",width=column_width(editor_rows,"Status")),
+                            "Fundstellen":st.column_config.NumberColumn(
+                                "Fundstellen",width=110),
+                            "Grösse (HTTP)":st.column_config.TextColumn(
+                                "Grösse",width=120),
                             "Gespeichert":st.column_config.CheckboxColumn("Heruntergeladen")})
                     visible_selected={row["Dokument"] for row in edited if row["Auswahl"]}
                     selected_urls=merge_visible(
@@ -756,6 +773,55 @@ if current_page == "Dokumente":
                 else:
                     st.info("Keine Dokumente passen zum Suchbegriff. "
                             "Du kannst den Filter löschen oder neu suchen.")
+                with st.expander("🔎 Dokumenteigenschaften und Fundstellen",expanded=False):
+                    if filtered_docs:
+                        details_url=st.selectbox(
+                            "Dokument auswählen",
+                            [d["url"] for d in filtered_docs[:500]],
+                            key=f"{prefix}_details")
+                        details=next(d for d in docs if d["url"]==details_url)
+                        ref_rows=list_references(doc_run,details_url)
+                        st.caption(f"**{len(ref_rows)} Fundstellen** · "
+                                   f"Dateimetadaten: {details.get('property_status') or 'Noch nicht geprüft'}")
+                        if ref_rows:
+                            st.dataframe([{"Fundstelle":r["url"],"Quelle":r["type"]}
+                                          for r in ref_rows],
+                                         width="stretch",hide_index=True,
+                                         column_config={
+                                            "Fundstelle":st.column_config.LinkColumn(
+                                                "Gefunden auf",width="large")})
+                        else:
+                            st.caption("Keine Quellseiten gespeichert – bei älteren "
+                                       "Snapshots werden Fundstellen nicht nachträglich ermittelt.")
+                        http_rows=[
+                            {"Eigenschaft":"HTTP ETag","Wert":details.get("etag") or "–"},
+                            {"Eigenschaft":"HTTP Last-Modified",
+                             "Wert":details.get("last_modified") or "–"},
+                            {"Eigenschaft":"HTTP Content-Length",
+                             "Wert":details.get("length") or "–"},
+                            {"Eigenschaft":"SHA-256 (intern)",
+                             "Wert":details.get("sha256") or "Noch nicht geprüft"},
+                        ]
+                        st.dataframe(http_rows+display_properties(details.get("properties") or {}),
+                            hide_index=True,width="stretch")
+                        if details.get("property_error"):
+                            st.warning(details["property_error"])
+                        if st.button("Eigenschaften dieses Dokuments prüfen",
+                                     key=f"{prefix}_probe_one"):
+                            with st.spinner("Dokument temporär abrufen und Metadaten lesen …"):
+                                result=probe_selected(doc_run,[details_url])
+                            if result[0].get("error"):
+                                st.error(result[0]["error"])
+                            else:
+                                st.success(f"Eigenschaften gelesen · {result[0]['status']}.")
+                            st.rerun()
+                    else:
+                        st.caption("Keine Dokumente für diesen Filter.")
+                st.caption("Vor dem eigentlichen Download zeigt die Inventarisierung "
+                           "HTTP-Metadaten. Für eingebettete PDF-/Office-Eigenschaften "
+                           "und SHA-256 wird die Datei bei einer ausdrücklichen Prüfung "
+                           "temporär übertragen (maximal 20 MB) und danach gelöscht. "
+                           "TXT/CSV enthalten normalerweise keine eingebetteten Office-Tags.")
                 st.session_state[selection_key]=sorted(selected_urls)
                 st.caption(f"**{len(selected_urls)} Dokumente für den Download vorgemerkt** "
                            "– auch ausserhalb des aktuellen Suchfilters.")
