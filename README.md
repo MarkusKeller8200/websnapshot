@@ -247,3 +247,9 @@ Ausschlüsse werden bereits beim Einlesen der XML-Sitemap und beim Verarbeiten d
 Nach einer Änderung der Ausschlussliste wird vor einem weiteren Delta-Snapshot ein neuer Full-Snapshot benötigt, damit ausgeschlossenes Material nicht aus früheren Snapshots geerbt wird.
 
 Details: [Release v0.6.11](docs/releases/v0.6.11.md) und [CHANGELOG](CHANGELOG.md).
+
+## WebSnapshot v0.6.12 – Ausschlussliste zuverlässig speichern
+
+Die Website-Verwaltung bietet einen **eigenen Speicherbutton direkt unter der Crawl-Ausschlussliste**. Die Liste wird unabhängig von Browser-Einstellungen gespeichert und aus SQLite zurückgelesen, bevor die Anwendung Erfolg meldet. Direkt unter dem Eingabefeld siehst du die Zahl der **tatsächlich gespeicherten Pfade** und kannst die Einträge zur Kontrolle aufklappen. Eine Warnung signalisiert ungespeicherte Änderungen.
+
+Der allgemeine Button «Erfassungseinstellungen speichern» bestätigt gespeicherte Änderungen ebenfalls sichtbar. [Release v0.6.12](docs/releases/v0.6.12.md) · [CHANGELOG](CHANGELOG.md)
