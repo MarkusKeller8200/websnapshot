@@ -8,7 +8,7 @@ version = "0.6.8"
 description = "Manual local website snapshots and change reports"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
-dependencies = ["streamlit>=1.38,<2", "requests>=2.32,<3", "beautifulsoup4>=4.12,<5", "playwright>=1.55,<2", "pypdf>=5,<7"]
+dependencies = ["streamlit>=1.38,<2", "requests>=2.32,<3", "beautifulsoup4>=4.12,<5", "playwright>=1.55,<2", "pypdf>=5,<7", "olefile>=0.47,<1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
