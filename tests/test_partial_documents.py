@@ -150,3 +150,20 @@ def test_partial_does_not_head_robots_blocked_document(tmp_path,monkeypatch):
     docs=list_documents(partial,tmp_path)
     assert docs[0]["url"]==PDF
     assert docs[0]["status"]=="Nicht geprüft (robots.txt)"
+
+
+
+def test_inherited_documents_work_for_legacy_full_without_snapshot_meta(tmp_path):
+    from websnapshot.core import save
+    from websnapshot.documents import init, previous_document_metadata
+    with sqlite3.connect(database(tmp_path)) as db:
+        db.execute("INSERT INTO sites(id,url,created_at) VALUES(1,?,'now')",(ROOT,))
+    full=save(1,{ROOT:("Test","Seiteninhalt")},[],tmp_path)
+    init(tmp_path)
+    with sqlite3.connect(database(tmp_path)) as db:
+        db.execute("""INSERT INTO documents
+            (run_id,url,etag,last_modified,length,status)
+            VALUES(?,?,?,?,?,?)""",
+            (full,PDF,"alt","Wed, 14 Oct 2026 10:00:00 GMT","123","Neu gefunden"))
+    previous=previous_document_metadata(full,tmp_path)
+    assert previous=={PDF:("alt","Wed, 14 Oct 2026 10:00:00 GMT","123")}
