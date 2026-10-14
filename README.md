@@ -211,3 +211,11 @@ Die neuen Standardwerte sind **200'000 entdeckte URLs**, **2'000 besuchte Seiten
 WebSnapshot misst beim Crawlen die Zeiten von robots.txt, Sitemaps, Link-Discovery, Seitenabrufen und Datenbankspeicherung. Live und im Snapshot-Archiv erscheinen Anzahl, Minimum, Mittelwert, Maximum und Summe der Messungen in Millisekunden sowie die langsamste URL pro Phase. Für Browserseiten wird zusätzlich heuristisch zwischen serverseitig vorhandenem Inhalt und durch JavaScript nachgeladenen Inhalten unterschieden; dies ist keine exakte Klassifikation.
 
 Statische Seiten werden mit bis zu vier HTTP-Workern gleichzeitig abgerufen. Browserseiten bleiben sequentiell. Der HTTP-Timeout bezeichnet eine Wartezeit ohne Datenempfang und ist **keine harte Grenze für die gesamte Seitendauer**. Grosse Discovery-Limits erhöhen Datenbank- und Speicherbedarf. Weitere Details: [Release v0.6.6](docs/releases/v0.6.6.md) und [CHANGELOG](CHANGELOG.md).
+
+## WebSnapshot v0.6.7 – Grosse Crawls und hierarchische Sitemap
+
+Für kontrollierte Belastungstests können jetzt **bis zu 10 parallele HTTP-Worker**, **100'000 besuchte URLs** und **1'000'000 entdeckte URLs** eingestellt werden. Die Standards bleiben auf 3 Worker, 2'000 besuchte und 200'000 entdeckte URLs gesetzt. Die Einstellungswerte gelten für neue Jobs; alte Snapshots und ihre Daten werden nicht geändert.
+
+Die Sitemap verfügt über einen **aufklappbaren Verzeichnisbaum** mit verschachtelten URL-Pfaden, eine **flache und sortierbare Tabelle** sowie **CSV- und Excel-Exporte**. Die Exporte enthalten alle Seiten des Snapshots. Zur Entlastung wird die Sitemap nur aus Titel-/URL-/Längen-Metadaten aufgebaut. Das Tabellenlayout passt die Breiten aller Spalten ausser der letzten an die angezeigten Inhalte an.
+
+Details: [Release v0.6.7](docs/releases/v0.6.7.md), [CHANGELOG](CHANGELOG.md) und [alle Releases](https://github.com/MarkusKeller8200/websnapshot/releases).
