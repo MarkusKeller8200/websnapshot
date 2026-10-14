@@ -12,14 +12,16 @@ import streamlit as st
 from websnapshot.core import DATA, add_site, sites, runs, compare, report
 from websnapshot.inventory import dashboard, discover_and_snapshot, remove_site, storage_bytes
 from websnapshot.documents import list_documents, download_selected
+from websnapshot.jobs import launch, latest, running, recover_interrupted
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide")
 st.title("WebSnapshot")
-st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.3.0")
+st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.4.0")
 
-tab_overview, tab_sites, tab_snapshots, tab_system = st.tabs(
-    ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Updates"])
+tab_overview, tab_sites, tab_snapshots, tab_map, tab_system = st.tabs(
+    ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Sitemap", "Updates"])
 
 with tab_overview:
     overview = dashboard()
@@ -91,37 +93,37 @@ with tab_snapshots:
                                 step=100)
         st.caption("Automatische Sitemaps und rekursive Linksuche ohne feste Linktiefe. "
                    "Das Schutzlimit verhindert endlose Crawls. robots.txt wird berücksichtigt.")
-        if st.button("Neuen Snapshot erstellen", type="primary"):
-            latest = {"phase":"Initialisierung", "pages":0, "documents":0,
-                      "visited":0, "discovered":0, "elapsed":0}
-            def update_progress(**values):
-                latest.update(values)
-            status = st.status("Snapshot läuft …", expanded=True)
-            numbers = st.empty()
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(discover_and_snapshot, site_id, options[site_id],
-                                     int(limit), progress=update_progress)
-                started = monotonic()
-                while not future.done():
-                    numbers.info(
-                        f"**{latest['phase']}** · Laufzeit: {int(monotonic()-started)} s · "
-                        f"Seiten gespeichert: {latest['pages']} · "
-                        f"Dokumentlinks gefunden: {latest['documents']} · "
-                        f"URLs besucht: {latest['visited']} · "
-                        f"URLs entdeckt: {latest['discovered']}")
-                    sleep(0.35)
-                try:
-                    run_id, result = future.result()
-                    numbers.success(f"Fertig nach {int(monotonic()-started)} Sekunden · "
-                                    f"{result['pages']} Seiten · {result['documents']} Dokumentlinks")
-                    status.update(label="Snapshot abgeschlossen", state="complete")
-                    if result["errors"]:
-                        st.warning(f"{len(result['errors'])} Probleme festgestellt.")
-                        with st.expander("Abrufprotokoll"):
-                            st.code("\n".join(result["errors"]))
-                except Exception as exc:
-                    status.update(label="Snapshot fehlgeschlagen", state="error")
-                    st.error(str(exc))
+        @st.fragment(run_every="2s")
+        def show_job():
+            job = latest(site_id)
+            if job:
+                from datetime import timezone
+                details = json.loads(job["progress"])
+                began = datetime.fromisoformat(job["started_at"])
+                until = datetime.fromisoformat(job["ended_at"]) if job["ended_at"] else datetime.now(timezone.utc)
+                duration = max(0, int((until-began).total_seconds()))
+                st.write(f"**Job #{job['id']} – {job['state']}**")
+                cols = st.columns(4)
+                for col,label,value in zip(cols,["Laufzeit", "Seiten", "Dokumente", "URLs entdeckt"],
+                    [f"{duration} s",details.get("pages","—"),details.get("documents","—"),
+                     details.get("discovered","—")]):
+                    col.metric(label,value)
+                if job["state"] in ("queued","running"):
+                    st.info("Snapshot läuft im Hintergrund. Du kannst weiterarbeiten.")
+                elif job["state"] in ("failed","interrupted"):
+                    st.error(job["message"])
+                else:
+                    st.success(job["message"])
+            return job
+        current_job = show_job()
+        if st.button("Neuen Snapshot im Hintergrund starten", type="primary",
+                     disabled=bool(current_job and current_job["state"] in ("queued","running"))):
+            started, job_id = launch(site_id,options[site_id],int(limit))
+            if started:
+                st.success(f"Job #{job_id} gestartet.")
+            else:
+                st.warning(f"Für diese Website läuft Job #{job_id} bereits.")
+            st.rerun()
         history = runs(site_id)
         st.subheader("Snapshot-Verlauf")
         st.dataframe([{"ID":r[0],"Zeitpunkt (UTC)":r[1],"Status":r[2],
@@ -176,15 +178,56 @@ with tab_snapshots:
                                    mime="text/html")
                 st.caption("Eine fehlende Seite bedeutet nicht, dass sie gelöscht wurde.")
 
+with tab_map:
+    st.subheader("Sitemap / erfasste Seiten")
+    options = dict(sites())
+    if not options:
+        st.info("Bitte zuerst eine Website hinzufügen.")
+    else:
+        chosen = st.selectbox("Website",list(options),format_func=lambda i:options[i],key="map_site")
+        map_history = runs(chosen)
+        if not map_history:
+            st.info("Noch kein Snapshot erfasst.")
+        else:
+            selected_run = st.selectbox("Snapshot", [r[0] for r in map_history], key="map_run")
+            import sqlite3
+            from websnapshot.core import database
+            with sqlite3.connect(database()) as db:
+                entries = db.execute("SELECT url,title FROM pages WHERE run_id=? ORDER BY url",
+                                     (selected_run,)).fetchall()
+            st.caption(f"{len(entries)} archivierte HTML-Seiten. Die Gliederung folgt URL-Pfaden, "
+                       "nicht zwingend der tatsächlichen Website-Navigation.")
+            query = st.text_input("URL oder Titel suchen",key="sitemap_search")
+            folders = {}
+            for url,title in entries:
+                parts = [s for s in urlsplit(url).path.split("/") if s]
+                folders.setdefault(parts[0] if parts else "Startseite", []).append((url,title))
+            for folder,values in sorted(folders.items()):
+                subset = [(u,t) for u,t in values if query.casefold() in (u+" "+t).casefold()]
+                if not subset:
+                    continue
+                with st.expander(f"📁 {folder} ({len(subset)})",expanded=bool(query)):
+                    for url,title in subset:
+                        left,right=st.columns([6,1])
+                        left.write(f"📄 {title or url}")
+                        left.caption(url)
+                        right.link_button("Öffnen ↗",url)
+
 with tab_system:
+    with st.expander("Unterbrochene Job-Sperren freigeben"):
+        st.caption("Nur nach einem Neustart ausführen, wenn definitiv kein Snapshot mehr läuft.")
+        if st.button("Sperren manuell freigeben"):
+            st.success(f"{recover_interrupted()} Jobs als unterbrochen markiert.")
     st.subheader("Anwendung aktualisieren")
     st.write("Übernimmt neue Änderungen aus dem konfigurierten GitHub-Repository "
              "und installiert Python-Abhängigkeiten. Keine Updates während eines Crawls starten.")
     st.warning("Nur für die lokale Einzelplatzinstallation. Git muss verfügbar sein; "
                "lokale Codeänderungen können das Update verhindern. "
                "Vorher wichtige Daten aus .data sichern.")
+    if running():
+        st.warning("Updates sind gesperrt, solange Snapshot-Jobs aktiv sind.")
     confirm_update = st.checkbox("Ich möchte den aktuellen GitHub-Stand installieren.")
-    if st.button("Update installieren und Anwendung neu starten",disabled=not confirm_update):
+    if st.button("Update installieren und Anwendung neu starten",disabled=not confirm_update or running()>0):
         try:
             status = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain"],
                                     text=True,capture_output=True,timeout=15,check=True)
