@@ -23,6 +23,13 @@ def init(data: Path = DATA) -> None:
             id INTEGER PRIMARY KEY,run_id INTEGER,url TEXT NOT NULL,path TEXT NOT NULL,
             bytes INTEGER NOT NULL,digest TEXT NOT NULL,downloaded_at TEXT NOT NULL);
         """)
+        columns={row[1] for row in db.execute("PRAGMA table_info(downloads)")}
+        for column,definition in (
+            ("document_date","TEXT"),("date_source","TEXT"),
+            ("original_filename","TEXT"),("content_status","TEXT"),
+        ):
+            if column not in columns:
+                db.execute(f"ALTER TABLE downloads ADD COLUMN {column} {definition}")
 
 
 def document_status(previous: tuple | None, current: tuple) -> str:
@@ -140,6 +147,10 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
     with sqlite3.connect(database(data)) as db:
         known = {u:last_modified for u,last_modified in db.execute(
             "SELECT url,last_modified FROM documents WHERE run_id=?", (run_id,))}
+    with sqlite3.connect(database(data)) as db:
+        previous_hashes = {u:h for u,h in db.execute(
+            "SELECT url,digest FROM downloads WHERE url IN "
+            "(SELECT url FROM documents WHERE run_id=?) ORDER BY id ASC",(run_id,))}
     outcomes = []
     session = requests.Session()
     session.headers["User-Agent"] = AGENT
@@ -200,14 +211,24 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
                     except Exception:
                         target.unlink(missing_ok=True)
                         raise
+            current_hash=digest.hexdigest()
+            prior_hash=previous_hashes.get(url)
+            content_status=("Neu" if prior_hash is None else
+                "Unverändert (SHA-256)" if prior_hash==current_hash else
+                "Inhalt geändert (SHA-256)")
             with sqlite3.connect(database(data)) as db:
                 db.execute("""INSERT INTO downloads
-                    (run_id,url,path,bytes,digest,downloaded_at) VALUES(?,?,?,?,?,?)""",
-                    (run_id,url,str(target),count,digest.hexdigest(),
-                     datetime.now(timezone.utc).isoformat()))
+                    (run_id,url,path,bytes,digest,downloaded_at,
+                     document_date,date_source,original_filename,content_status)
+                    VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (run_id,url,str(target),count,current_hash,
+                     datetime.now(timezone.utc).isoformat(),
+                     date.strftime("%Y-%m-%d"),date_source,source_name,content_status))
+            previous_hashes[url]=current_hash
             outcomes.append({"url":url,"path":str(target),"bytes":count,
-                             "sha256":digest.hexdigest(),"date_source":date_source,
-                             "date":date.strftime("%Y-%m-%d")})
+                             "sha256":current_hash,"date_source":date_source,
+                             "date":date.strftime("%Y-%m-%d"),
+                             "content_status":content_status})
         except (requests.RequestException,ValueError,OSError) as exc:
             outcomes.append({"url":url,"error":str(exc)})
         finally:
