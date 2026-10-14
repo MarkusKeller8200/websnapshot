@@ -135,3 +135,12 @@ Drei Modi pro Website: statisch (requests), browsergestützt (Playwright/Chromiu
 **0.5.0:** Browsermodus als konfigurierbare Erfassungsart je Website vorbereiten (UI, Konfiguration, Auftragsmodell und Validierung). Bis zur Browser-Engine ist die Option ausdrücklich als «noch nicht verfügbar» markiert; keine vorgetäuschte dynamische Erfassung.
 
 **0.6.0:** Playwright mit Chromium als technische Ausführung des Browsermodus implementieren. Seiten nach JavaScript-Rendering auswerten, dynamisch entdeckte Links in das Inventar übernehmen, Browserressourcen begrenzen und Fehler im Hintergrund-Job protokollieren. Optionaler Automatikmodus erst nach belastbaren Tests.
+
+## 15. Umsetzung 0.6.0
+
+- Browsermodus mit Playwright und Chromium als optionale Erfassungsart je Website implementiert. JavaScript-gerenderte HTML-Seiten und Links werden nach DOM-Laden und konfigurierbarer Wartezeit ausgelesen.
+- Full-Snapshots suchen über Sitemap und Links, Partial-Snapshots prüfen nur bekannte HTML-URLs aus der zuletzt gespeicherten Snapshot-Kette. Partial ist ein speicheroptimiertes Delta: neue/geänderte Textseiten werden gespeichert, unveränderte Seiten über den Vorgänger geerbt.
+- Full-Snapshots ohne abhängige Deltas sind einzeln löschbar; einzelne Delta-Snapshots und referenzierte Baselines bleiben geschützt.
+- Sitemap-Navigation als kompakte Tabelle mit Pfad, Titel, URL, Zeichenzahl und Link zur Originalseite.
+
+Einschränkungen: Partial-Läufe entdecken keine neuen Seiten oder Dokumentlinks, erfassen keine Löschung allein durch Nichterreichbarkeit und garantieren keine kürzere Laufzeit bei vielen bekannten URLs. Browser-Rendering kann wegen Ressourcen von Drittanbietern, Redirects, Login oder komplexer Navigation unvollständig sein. Verifikation auf dem lokalen Windows-Rechner steht aus. Installationsanleitung unter [Version 0.6.0](VERSION_0.6.0.md).
