@@ -438,33 +438,95 @@ with tab_snapshots:
 
             with section_documents:
                 doc_run = st.selectbox("Dokumentinventar", [r[0] for r in history],
-                                       key="document_run")
+                                       key=f"document_run_{site_id}")
                 docs = list_documents(doc_run)
-                st.caption("PDF- und Word-Dateien werden erst nach expliziter Auswahl "
-                           "heruntergeladen. Änderungsstatus basiert auf HTTP-Metadaten.")
+                st.caption("PDF- und Word-Dateien werden ausschliesslich nach Auswahl "
+                           "heruntergeladen. Suche und Auswahl gelten nur für diesen Snapshot.")
                 if not docs:
                     st.info("Für diesen Snapshot ist keine Dokumentliste vorhanden.")
                 else:
-                    st.dataframe([
-                        {"Dokument":d["url"], "Status":d["status"],
-                         "Grösse (HTTP)":d["length"] or "Unbekannt",
-                         "Gespeichert":bool(d["downloaded"])}
-                        for d in docs], hide_index=True, width="stretch", height=420)
-                    chosen_docs = st.multiselect("Dokumente auswählen",
-                        [d["url"] for d in docs], key="selected_documents")
-                    layout = st.radio("Ablage", ["Website-Ordnerstruktur", "Flacher Ordner"],
-                                      horizontal=True, key="document_layout")
-                    if st.button(f"{len(chosen_docs)} Dokumente herunterladen",
-                                 disabled=not chosen_docs, key="download_documents"):
-                        outcomes = download_selected(doc_run, chosen_docs,
-                                                     flat=layout=="Flacher Ordner")
+                    prefix = f"doc_{site_id}_{doc_run}"
+                    selection_key = f"{prefix}_selected_urls"
+                    revision_key = f"{prefix}_editor_revision"
+                    previous_filter_key = f"{prefix}_previous_filter"
+                    selected_urls = set(st.session_state.get(selection_key, []))
+                    all_urls = [d["url"] for d in docs]
+                    valid_urls = set(all_urls)
+                    selected_urls &= valid_urls
+                    search = st.text_input("Dokumente suchen",
+                        placeholder="Dateiname, PDF-Link oder Änderungsstatus suchen …",
+                        key=f"{prefix}_search",help="Gross-/Kleinschreibung spielt keine Rolle.")
+                    if st.session_state.get(previous_filter_key) != search:
+                        st.session_state[previous_filter_key] = search
+                        st.session_state[revision_key] = st.session_state.get(revision_key,0)+1
+                    filtered_docs = filter_documents(docs,search)
+                    visible_urls = [d["url"] for d in filtered_docs]
+                    st.caption(f"**{len(filtered_docs)} von {len(docs)}** Dokumenten sichtbar · "
+                               f"**{len(selected_urls)}** insgesamt ausgewählt")
+                    button_cols = st.columns(4)
+                    actions = [
+                        ("☑️ Alle auswählen","all_select"),
+                        ("☐ Alle abwählen","all_clear"),
+                        ("☑️ Gefilterte auswählen","filtered_select"),
+                        ("☐ Gefilterte abwählen","filtered_clear")]
+                    for col,(caption,action) in zip(button_cols,actions):
+                        with col:
+                            if st.button(caption,key=f"{prefix}_{action}",
+                                         use_container_width=True,
+                                         disabled=not docs or (
+                                             action.startswith("filtered") and not filtered_docs)):
+                                selected_urls = bulk_selection(
+                                    selected_urls,all_urls,visible_urls,action)
+                                st.session_state[revision_key] = (
+                                    st.session_state.get(revision_key,0)+1)
+                    st.caption("Auswahl direkt in der ersten Tabellenspalte ändern. "
+                               "«Gefilterte abwählen» lässt ausgeblendete Dokumente ausgewählt.")
+                    if filtered_docs:
+                        editor_rows = [
+                            {"Auswahl":d["url"] in selected_urls,
+                             "Dokument":d["url"], "Status":d["status"],
+                             "Grösse (HTTP)":d["length"] or "Unbekannt",
+                             "Gespeichert":bool(d["downloaded"])}
+                            for d in filtered_docs]
+                        revision = st.session_state.get(revision_key,0)
+                        edited = st.data_editor(
+                            editor_rows,key=f"{prefix}_editor_{revision}",
+                            hide_index=True,width="stretch",height=490,
+                            num_rows="fixed",row_height=33,
+                            disabled=["Dokument","Status","Grösse (HTTP)","Gespeichert"],
+                            column_config={
+                                "Auswahl":st.column_config.CheckboxColumn(
+                                    "Auswahl",width="small",required=True),
+                                "Dokument":st.column_config.LinkColumn(
+                                    "Dokument / URL",width="large"),
+                                "Status":st.column_config.TextColumn("Änderungsstatus",width="medium"),
+                                "Grösse (HTTP)":st.column_config.TextColumn("Grösse",width="small"),
+                                "Gespeichert":st.column_config.CheckboxColumn(
+                                    "Heruntergeladen",width="small")})
+                        visible_selected={row["Dokument"] for row in edited if row["Auswahl"]}
+                        selected_urls=merge_visible(
+                            selected_urls,all_urls,visible_urls,visible_selected)
+                    else:
+                        st.info("Keine Dokumente passen zum Suchbegriff. "
+                                "Du kannst den Filter löschen oder neu suchen.")
+                    st.session_state[selection_key]=sorted(selected_urls)
+                    st.caption(f"**{len(selected_urls)} Dokumente für den Download vorgemerkt** "
+                               "– auch ausserhalb des aktuellen Suchfilters.")
+                    layout = st.radio("Speicherstruktur",
+                        ["Website-Ordnerstruktur","Flacher Ordner"],
+                        horizontal=True,key=f"{prefix}_layout")
+                    if st.button(f"⬇️ {len(selected_urls)} ausgewählte Dokumente herunterladen",
+                                 disabled=not selected_urls,key=f"{prefix}_download",
+                                 type="primary"):
+                        with st.spinner(f"{len(selected_urls)} Dokumente herunterladen …"):
+                            outcomes=download_selected(doc_run,sorted(selected_urls),
+                                                       flat=layout=="Flacher Ordner")
+                        success_count=sum("error" not in item for item in outcomes)
+                        st.success(f"{success_count} von {len(outcomes)} Dokumenten gespeichert.")
                         for item in outcomes:
                             if "error" in item:
                                 st.error(f"{item['url']}: {item['error']}")
-                            else:
-                                st.success(f"Gespeichert: {item['path']}")
-                        st.caption("Download-Verzeichnis: .data/downloads")
-
+                        st.caption("Lokales Verzeichnis: .data/downloads")
             with section_quality:
                 diagnostic_id = st.selectbox("Snapshot für Diagnose",
                     [r[0] for r in history], key="diagnostic_run")
