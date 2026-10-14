@@ -32,3 +32,18 @@ Ab diesem Update wird für jeden neu gestarteten Hintergrund-Job automatisch ein
 Jede Fortschrittsmeldung schreibt `last_activity_at` und `last_progress_at` in SQLite. Wenn bei einem laufenden Job mindestens 60 Sekunden lang keine neue Meldung eingegangen ist, zeigt die Oberfläche eine Warnung. Das ist **kein Beweis für einen Absturz**: Eine einzelne langsame Anfrage oder eine blockierte Website kann denselben Effekt haben. Technische Logs, die im Prozess selbst einen harten Absturz (z. B. Stromverlust) verhindern, können nicht nachträglich geschrieben werden; in diesem Fall ist der letzte vorhandene Logeintrag ausschlaggebend.
 
 Für ältere Jobs werden keine Logdateien rückwirkend erstellt. Die Protokollansicht liest höchstens die letzten 500 KB ein, um Streamlit nicht mit riesigen Dateien zu blockieren. Bestehende Datenbanken erhalten die neuen Spalten automatisch beim ersten Öffnen. Die Anwendung darf während eines laufenden Crawls nicht aktualisiert oder neu gestartet werden, da die Hintergrundthreads im selben Prozess laufen.
+
+
+## Neue Seitenleiste und Dokumentenauswahl ab v0.6.4
+
+Die Website wird nun links in der ausklappbaren Streamlit-Seitenleiste ausgewählt. Jeder Eintrag besitzt ein 🌐-Symbol und eine eindeutige Website-Adresse; die gewählte Website bleibt beim Wechsel zwischen Snapshot-Zentrale, Sitemap und Website-Einstellungen erhalten. Das Sidebar-Suchfeld erlaubt ein schnelles Filtern zahlreicher registrierter Websites. Die zentrale Dashboard-Tabelle bleibt eine Gesamtübersicht über alle Websites.
+
+Die Website-Verwaltung zeigt die Einstellungen für die links ausgewählte Website. Das Formular «Neue Website hinzufügen» und die Löschbestätigung sind ausklappbar. Im Snapshot-Archiv sind Zusammenfassung und Fehlerprotokoll ebenfalls standardmässig eingeklappt.
+
+### Dokumentauswahl
+
+Unter «Snapshots & Vergleich → Dokumente» werden Dokumente direkt in einer Tabelle mit Checkboxen ausgewählt. Der Suchfilter enthält einen Platzhalter «Dateiname, PDF-Link oder Änderungsstatus suchen …»; er filtert case-insensitiv nach URL, Status und HTTP-Dateigrösse. Die Schaltflächen «Alle auswählen», «Alle abwählen», «Gefilterte auswählen» und «Gefilterte abwählen» wirken wie beschriftet. Insbesondere löschen Filterwechsel und «Gefilterte abwählen» keine Auswahl ausserhalb der momentan sichtbaren Zeilen. Der Download umfasst die gesamte Auswahl des aktuellen Snapshots, nicht bloss die Treffer des Filters. Die Auswahl ist eine Streamlit-Sitzungseinstellung, kein dauerhaftes Datenbankfeld.
+
+### Veröffentlichungen auf GitHub
+
+Jede neue Version erhält einen Eintrag in `CHANGELOG.md` und ausführliche Release-Notizen unter `docs/releases/vX.Y.Z.md`. Die GitHub-Actions-Datei `.github/workflows/publish-release.yml` prüft bei einer Versionsänderung Tests und erstellt anschliessend GitHub-Releases, soweit Actions und Schreibberechtigungen aktiviert sind. Die tatsächliche Veröffentlichung ist erst nach dem erfolgreichen Workflow bestätigt.
