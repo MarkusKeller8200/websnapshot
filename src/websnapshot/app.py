@@ -48,7 +48,12 @@ st.markdown("""
     padding-left: 1.6rem !important;
     padding-right: 1.6rem !important;
 }
-[data-testid="stSidebar"] {width: 20rem !important; min-width: 20rem !important;}
+/* Streamlit determines sidebar width dynamically; avoid keeping 20rem reserved. */
+[data-testid="stMain"] {min-width: 0 !important;}
+/* The built-in control hides all icons, so the custom menu toggle handles
+   expanded vs. compact navigation instead. */
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapsedControl"] {display:none !important;}
 [data-testid="stVerticalBlock"] {gap: .65rem;}
 [data-testid="stMetricValue"] {font-size: 1.5rem;}
 /* Streamlit nests labels in a Markdown wrapper. Align the button AND its
@@ -117,38 +122,79 @@ site_options = dict(sites())
 if st.session_state.get("active_site_id") not in site_options:
     st.session_state["active_site_id"] = next(iter(site_options), None)
 active_site_id = st.session_state["active_site_id"]
+if "ws_compact_nav" not in st.session_state:
+    st.session_state["ws_compact_nav"] = False
+compact_nav=bool(st.session_state["ws_compact_nav"])
+if compact_nav:
+    st.markdown("""<style>
+    section[data-testid="stSidebar"] {
+        width: 4.7rem !important;
+        min-width: 4.7rem !important;
+        max-width: 4.7rem !important;
+        flex: 0 0 4.7rem !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+        padding-left: .3rem !important;
+        padding-right: .3rem !important;
+    }
+    section[data-testid="stSidebar"] button {
+        padding-left: .25rem !important;
+        padding-right: .25rem !important;
+        justify-content: center !important;
+    }
+    section[data-testid="stSidebar"] button [data-testid="stMarkdownContainer"] {
+        justify-content: center !important;
+    }
+    </style>""",unsafe_allow_html=True)
 with st.sidebar:
-    st.markdown("### 🧭 Navigation")
-    for group, entries in NAV:
-        st.caption(group)
-        for page, label in entries:
-            if st.button(label, key="page_"+page,
+    if st.button("▶" if compact_nav else "◀ Menü einklappen",
+                 key="ws_nav_toggle",use_container_width=True,
+                 help="Menü ausklappen" if compact_nav else "Menü auf Symbole reduzieren"):
+        st.session_state["ws_compact_nav"]=not compact_nav
+        st.rerun()
+    if not compact_nav:
+        st.markdown("### 🧭 Navigation")
+    for group,entries in NAV:
+        if compact_nav:
+            st.divider()
+        else:
+            st.caption(group)
+        for page,label in entries:
+            icon=label.split(" ",1)[0]
+            if st.button(icon if compact_nav else label,
+                         key="page_"+page,help=label if compact_nav else None,
                          type="primary" if page==current_page else "secondary",
                          use_container_width=True):
                 st.session_state["ws_page"]=page
                 st.rerun()
-    st.divider()
-    st.markdown("### 🌐 Webseiten")
-    site_search = st.text_input("Webseiten suchen", placeholder="Domain oder Adresse …",
-                                key="sidebar_site_search",label_visibility="collapsed")
-    listed_sites = [(sid,address) for sid,address in site_options.items()
-                    if site_search.casefold().strip() in address.casefold()]
-    for sid,address in listed_sites:
-        parsed=urlsplit(address)
-        label=parsed.netloc+(parsed.path.rstrip("/") if parsed.path not in ("","/") else "")
-        label=label[:36]+"…" if len(label)>37 else label
-        if st.button("🌐 "+label,key=f"sidebar_site_{sid}",
-                     type="primary" if sid==active_site_id else "secondary",
-                     help=address,use_container_width=True):
-            st.session_state["active_site_id"]=sid
-            st.rerun()
-    if not site_options:
-        st.caption("Noch keine Websites registriert.")
-    elif not listed_sites:
-        st.caption("Keine passenden Websites.")
-    if active_site_id in site_options:
-        st.caption("Ausgewählt: "+site_options[active_site_id])
-    st.caption("Seitenleiste über das Symbol oben links einklappen.")
+        if group=="ÜBERSICHT":
+            if site_options:
+                def site_label(sid):
+                    address=site_options[sid]
+                    parsed=urlsplit(address)
+                    name=parsed.netloc+(parsed.path if parsed.path not in ("","/") else "")
+                    return name[:65]+"…" if len(name)>66 else name
+                if compact_nav:
+                    with st.popover("🌐",help="Website auswählen",use_container_width=True):
+                        chosen=st.selectbox("Website auswählen",
+                            options=list(site_options),
+                            index=list(site_options).index(active_site_id),
+                            format_func=site_label,key="ws_site_compact")
+                        if chosen!=active_site_id:
+                            st.session_state["active_site_id"]=chosen
+                            st.rerun()
+                else:
+                    chosen=st.selectbox("Website auswählen",
+                        options=list(site_options),
+                        index=list(site_options).index(active_site_id),
+                        format_func=site_label,key="ws_site_dropdown")
+                    if chosen!=active_site_id:
+                        st.session_state["active_site_id"]=chosen
+                        st.rerun()
+            elif not compact_nav:
+                st.caption("Noch keine Websites registriert.")
+    if not compact_nav:
+        st.caption("Mit dem Pfeilsymbol bleibt die Navigation als Icon-Leiste sichtbar.")
 
 
 @st.fragment(run_every="2s")
