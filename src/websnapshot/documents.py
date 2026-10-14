@@ -106,7 +106,7 @@ def destination(url: str, root: Path, flat: bool) -> Path:
         raise ValueError("Nur PDF- und Word-Dateien mit Dateiendung erlaubt")
     host = _clean(p.netloc.replace(":", "_"))
     parent = root / host if flat else root.joinpath(host, *segments[:-1])
-    if p.query:
+    if p.query or flat:
         stem, suffix = filename.rsplit(".",1)
         filename = stem[:70] + "_" + sha256(url.encode()).hexdigest()[:10] + "." + suffix
     return parent / filename
