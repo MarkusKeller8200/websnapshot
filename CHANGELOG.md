@@ -2,6 +2,16 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.18 – Dokument-URLs bei Partial-Snapshots erneut prüfen (15.10.2026)
+- Partial-Snapshots übernehmen jetzt die bekannten PDF-, Word-, Excel-, TXT- und CSV-URLs aus der Vorgängerkette und prüfen sie erneut mit HTTP HEAD.
+- Neue Dokumentlinks auf bereits bekannten, erneut besuchten HTML-Seiten werden auch bei Partial-Snapshots erfasst.
+- ETag, Last-Modified und Content-Length mit dem vorherigen Dokumentinventar vergleichen; Status **Metadaten geändert**, **Unverändert**, **Neu**, **Nicht prüfbar** oder HTTP-Fehler ausweisen.
+- HEAD-Antworten 404, Weiterleitungen, Timeout und nicht unterstützte HEAD-Anfragen werden unterscheidbar; robots.txt-Sperren auf der Hauptdomain bleiben wirksam.
+- HTTP-Änderungsstatus und optionale SHA-256-Dateiprüfung stehen im Dokumentinventar getrennt; Dokumentstatus-Zusammenfassung im Job-Protokoll.
+- Regressionstests für Full → Partial → Partial, Legacy-Snapshots ohne Dokumenteinträge, neue Dokumentlinks und robots.txt-Sperren.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.18.md)
+
 ## v0.6.17 – Partial-Snapshot-Fehler behoben (14.10.2026)
 - Fehler beim Erstellen von Partial-Snapshots behoben: `cannot access local variable 'kind' where it is not associated with a value`.
 - Verwechslung des HTTP-Inhaltstyps mit der Snapshot-Typ-Funktion durch eindeutige Bezeichner `content_type` und `snapshot_kind_for_run` verhindert.
