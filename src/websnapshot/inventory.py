@@ -216,7 +216,7 @@ def dashboard(data: Path = DATA) -> list[dict]:
                                 (site_id,)).fetchone()
             page_count = document_count = discovered = pending = 0
             if latest:
-                page_count = db.execute("SELECT COUNT(*) FROM pages WHERE run_id=?", latest).fetchone()[0]
+                page_count = len(effective_pages(latest[0],data))
                 inv = db.execute("SELECT discovered,documents,pending FROM inventory WHERE run_id=?",
                                  latest).fetchone()
                 if inv:
