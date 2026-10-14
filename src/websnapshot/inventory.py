@@ -1,6 +1,6 @@
 """Enhanced discovery, inventory and local management for WebSnapshot 0.2."""
 from __future__ import annotations
-from collections import deque
+from collections import deque, Counter
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from time import perf_counter
@@ -10,7 +10,7 @@ import ipaddress
 import json
 import socket
 import sqlite3
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, parse_qsl
 from urllib.robotparser import RobotFileParser
 import xml.etree.ElementTree as ET
 import requests
@@ -27,6 +27,7 @@ from .performance import Timings, save as save_performance
 from .link_exclusions import LinkExclusionJournal
 from .url_exclusions import parse_excludes, excluded_by
 from .path_exclusion_audit import ExclusionStats
+from .crawl_discovery_stats import save as save_discovery_stats
 from hashlib import sha256
 from .diagnostics import canonical, path_key, MAX_DISCOVERED, MAX_PER_PATH, MAX_PER_PAGE, record, record_quality, duplicate_groups
 
@@ -83,6 +84,12 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     page_timeout = float(config.get("page_timeout",3.0))
     http_workers = max(1,min(10,int(config.get("http_workers",3))))
     links_per_page = max(1,min(10000,int(config.get("links_per_page",1000))))
+    # Compact URL-category statistics, not an unbounded list of raw URLs.
+    robots_blocked=0
+    robots_examples=[]
+    query_urls=0
+    query_parameters=Counter()
+    discovered_sources=Counter()
     timings = Timings()
     static_pages = browser_static_pages = browser_dynamic_pages = browser_unknown_pages = timeouts = 0
     changed_count = changed_from_full = 0
@@ -103,6 +110,8 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                 links_per_page=links_per_page,
                 crawl_scope=effective_mode,scope_excluded=scope_excluded,
                 exclude_paths=exclude_paths, path_excluded=excluded_stats.total,
+                robots_excluded=robots_blocked, query_variants=query_urls,
+                unique_paths=len(path_counts),
                 performance=timings.summary(),
                 static_pages=static_pages,
                 browser_static_pages=browser_static_pages,
@@ -219,7 +228,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
             warnings.append(f"Besuchslimit ({limit}) erreicht: {len(queue)} URLs offen")
         return warnings
     def enqueue(link, source, source_page=None):
-        nonlocal truncated, skipped, scope_excluded
+        nonlocal truncated, skipped, scope_excluded, robots_blocked, query_urls
         try:
             link=canonical(link)
             direct=source in ("html-link","browser-link")
@@ -232,10 +241,19 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
             if excluded_rule:
                 excluded_stats.record(excluded_rule,link)
                 return
+            if link in queued or link in docs:
+                if is_document(link) and source_page:
+                    document_references.setdefault(link,set()).add((source_page,source))
+                return
+            # Respect robots.txt *before* consuming the discovery and visit
+            # quotas. Later visit-time check remains as defense in depth.
+            if robots_loaded and not robot.can_fetch(AGENT,link):
+                robots_blocked+=1
+                if len(robots_examples)<20 and link not in robots_examples:
+                    robots_examples.append(link)
+                return
             if is_document(link) and source_page:
                 document_references.setdefault(link,set()).add((source_page,source))
-            if link in queued or link in docs:
-                return
             # Recognise linked documents immediately. They do not consume the
             # HTML page-visit limit, even when hosted in a shared asset folder.
             if is_document(link) and (related or urlsplit(link).netloc==host):
@@ -246,6 +264,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     return
                 docs.add(link)
                 found.add(link)
+                count_discovered(link,source)
                 url_records[link]=(source,"document",
                                    "Zugehöriger Dokument-Host" if related
                                    else "Verlinktes Dokument")
@@ -263,14 +282,23 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                 return
             queued.add(link)
             found.add(link)
+            count_discovered(link,source)
             path_counts[key]=path_counts.get(key,0)+1
             url_records[link]=(source,'queued','')
             queue.append(link)
         except (ValueError,TypeError):
             skipped+=1
+    def count_discovered(url,source):
+        nonlocal query_urls
+        discovered_sources[source]+=1
+        if urlsplit(url).query:
+            query_urls+=1
+            for key,_ in parse_qsl(urlsplit(url).query,keep_blank_values=True):
+                if key in query_parameters or len(query_parameters)<256:
+                    query_parameters[key]+=1
+
     skipped = 0
     pages = {}
-    sitemap_urls = []
     renderer = None
     capture_settings=get_capture(site_id,data)
     try:
@@ -308,16 +336,11 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     if len(sitemap_seen) + len(sitemap_queue) < 25:
                         sitemap_queue.append(link)
                 else:
-                    # Avoid enqueuing another department from a domain-wide
-                    # sitemap; only pages/docs within the logical subtree.
-                    if within_scope(link,start,effective_mode):
-                        excluded_rule=excluded_by(link,exclude_paths)
-                        if excluded_rule:
-                            excluded_stats.record(excluded_rule,link)
-                        else:
-                            sitemap_urls.append((link,sm))
-                    else:
-                        scope_excluded+=1
+                    # Apply scope, exclude and robots filters immediately.
+                    # Do not materialise a second potentially huge sitemap list.
+                    enqueue(link,"sitemap",sm)
+                    if len(found)>=discovery_limit:
+                        break
         except (requests.RequestException, ValueError, ET.ParseError, OSError) as exc:
             errors.append("Sitemap nicht lesbar: " + sm)
             if isinstance(exc,requests.Timeout):
@@ -325,8 +348,6 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
         finally:
             timings.observe("sitemap_fetch",perf_counter()-sitemap_started,sm)
             emit(phase="Sitemaps prüfen")
-    for link,sm_source in sitemap_urls:
-        enqueue(link,'sitemap',sm_source)
     timings.observe("discovery_initial",perf_counter()-discovery_started,origin)
     emit(phase='Seiten durchsuchen')
     worker_state=threading.local()
@@ -503,6 +524,17 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     record(run_id,url_records,data)
     link_audit.persist(run_id,data)
     excluded_stats.save(run_id,data)
+    save_discovery_stats(run_id,{
+        "robots_excluded":robots_blocked,
+        "robots_examples":robots_examples,
+        "query_variants":query_urls,
+        "unique_paths":len(path_counts),
+        "discovered_sources":dict(discovered_sources),
+        "top_query_parameters":query_parameters.most_common(20),
+        "top_variant_paths":sorted(path_counts.items(),
+                            key=lambda item:item[1],reverse=True)[:20],
+        "robots_loaded":robots_loaded,
+    },data)
     record_quality(run_id,dict(discovered=len(found),visited=len(visited),archived=len(pages),
         documents=len(docs),pending=remaining,skipped=skipped,errors=len(errors),
         duplicate_content=duplicate_groups(pages),truncated=int(truncated or remaining>0),
@@ -517,6 +549,9 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     return run_id, {"snapshot_kind":snapshot_kind, "full_baseline_id":full_id,
                     "crawl_scope":effective_mode,"scope_excluded":scope_excluded,
                     "exclude_paths":exclude_paths,"path_excluded":excluded_stats.total,
+                    "robots_excluded":robots_blocked,"query_variants":query_urls,
+                    "unique_paths":len(path_counts),
+                    "discovered_sources":dict(discovered_sources),
                     "changed_since_full":changed_from_full,
                     "discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
