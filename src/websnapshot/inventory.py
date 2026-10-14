@@ -25,7 +25,11 @@ def remove_site(site_id: int, delete_history: bool = False, data: Path = DATA) -
     with sqlite3.connect(database(data)) as db:
         if delete_history:
             ids = [row[0] for row in db.execute("SELECT id FROM runs WHERE site_id=?", (site_id,))]
-            db.executemany("DELETE FROM pages WHERE run_id=?", [(i,) for i in ids])
+            for table in ("pages","documents","downloads","inventory","crawl_urls",
+                          "crawl_quality","document_links","snapshot_meta"):
+                exists=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone()
+                if exists:
+                    db.executemany(f"DELETE FROM {table} WHERE run_id=?",[(i,) for i in ids])
             db.execute("DELETE FROM runs WHERE site_id=?", (site_id,))
         db.execute("DELETE FROM sites WHERE id=?", (site_id,))
 
