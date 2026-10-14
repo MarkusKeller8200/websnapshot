@@ -1,5 +1,7 @@
 """WebSnapshot: lokales Dashboard und manuell gestartete Website-Inventarisierung."""
 import json
+from concurrent.futures import ThreadPoolExecutor
+from time import monotonic, sleep
 from datetime import datetime
 from pathlib import Path
 import os
@@ -9,11 +11,12 @@ import streamlit as st
 
 from websnapshot.core import DATA, add_site, sites, runs, compare, report
 from websnapshot.inventory import dashboard, discover_and_snapshot, remove_site, storage_bytes
+from websnapshot.documents import list_documents, download_selected
 
 ROOT = Path(__file__).resolve().parents[2]
 st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide")
 st.title("WebSnapshot")
-st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.2.0")
+st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.3.0")
 
 tab_overview, tab_sites, tab_snapshots, tab_system = st.tabs(
     ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Updates"])
@@ -89,23 +92,73 @@ with tab_snapshots:
         st.caption("Automatische Sitemaps und rekursive Linksuche ohne feste Linktiefe. "
                    "Das Schutzlimit verhindert endlose Crawls. robots.txt wird berücksichtigt.")
         if st.button("Neuen Snapshot erstellen", type="primary"):
-            with st.spinner("Sitemaps und Unterseiten werden untersucht …"):
+            latest = {"phase":"Initialisierung", "pages":0, "documents":0,
+                      "visited":0, "discovered":0, "elapsed":0}
+            def update_progress(**values):
+                latest.update(values)
+            status = st.status("Snapshot läuft …", expanded=True)
+            numbers = st.empty()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(discover_and_snapshot, site_id, options[site_id],
+                                     int(limit), progress=update_progress)
+                started = monotonic()
+                while not future.done():
+                    numbers.info(
+                        f"**{latest['phase']}** · Laufzeit: {int(monotonic()-started)} s · "
+                        f"Seiten gespeichert: {latest['pages']} · "
+                        f"Dokumentlinks gefunden: {latest['documents']} · "
+                        f"URLs besucht: {latest['visited']} · "
+                        f"URLs entdeckt: {latest['discovered']}")
+                    sleep(0.35)
                 try:
-                    run_id, result = discover_and_snapshot(site_id, options[site_id], int(limit))
-                    st.success(f"Snapshot {run_id}: {result['pages']} HTML-Seiten "
-                               f"und {result['documents']} Dokumentlinks erfasst.")
-                    st.json({k:v for k,v in result.items() if k!="errors"})
+                    run_id, result = future.result()
+                    numbers.success(f"Fertig nach {int(monotonic()-started)} Sekunden · "
+                                    f"{result['pages']} Seiten · {result['documents']} Dokumentlinks")
+                    status.update(label="Snapshot abgeschlossen", state="complete")
                     if result["errors"]:
-                        st.warning(f"{len(result['errors'])} Probleme / Grenzen erkannt.")
+                        st.warning(f"{len(result['errors'])} Probleme festgestellt.")
                         with st.expander("Abrufprotokoll"):
                             st.code("\n".join(result["errors"]))
-                except (ValueError, OSError) as exc:
+                except Exception as exc:
+                    status.update(label="Snapshot fehlgeschlagen", state="error")
                     st.error(str(exc))
         history = runs(site_id)
         st.subheader("Snapshot-Verlauf")
         st.dataframe([{"ID":r[0],"Zeitpunkt (UTC)":r[1],"Status":r[2],
                        "Fehler":len(json.loads(r[3]))} for r in history],
                      hide_index=True, use_container_width=True)
+        if history:
+            st.subheader("PDF- und Word-Dokumente")
+            doc_run = st.selectbox("Dokumentinventar aus Snapshot", [r[0] for r in history],
+                                   key="document_run")
+            docs = list_documents(doc_run)
+            if docs:
+                st.caption("Beim Snapshot werden nur URLs und, soweit verfügbar, HTTP-Metadaten "
+                           "(ETag, Änderungsdatum, Dateigrösse) geprüft. "
+                           "Ohne belastbare Metadaten bleibt der Änderungsstatus unbekannt.")
+                st.dataframe([{"Dokument":d["url"], "Änderungsstatus":d["status"],
+                               "Grösse (HTTP)":d["length"] or "Unbekannt",
+                               "Heruntergeladen": bool(d["downloaded"])} for d in docs],
+                             hide_index=True, use_container_width=True)
+                selected = st.multiselect("Dokumente für Download auswählen",
+                                          options=[d["url"] for d in docs])
+                mode = st.radio("Ordnerstruktur",["Wie auf der Website","Alle Dateien in einem Ordner"],
+                                horizontal=True)
+                if st.button(f"{len(selected)} ausgewählte Dokumente herunterladen",
+                             disabled=not selected):
+                    with st.spinner("Dokumente werden heruntergeladen …"):
+                        outcomes = download_selected(doc_run,selected,
+                                                      flat=mode.startswith("Alle"))
+                    for item in outcomes:
+                        if "error" in item:
+                            st.error(f"{item['url']}: {item['error']}")
+                        else:
+                            st.success(f"Gespeichert: {item['path']} ({item['bytes']} Bytes)")
+                    st.caption("Zielverzeichnis: .data/downloads; nur ausgewählte Dateien "
+                               "werden heruntergeladen. Bestehende Dateinamen werden dabei ersetzt.")
+            else:
+                st.info("Keine PDF- oder Word-Dokumente für diesen Snapshot inventarisiert. "
+                        "Snapshots aus Version 0.2 enthalten noch keine detaillierte Dokumentliste.")
         if len(history) > 1:
             ids = [row[0] for row in history]
             a,b = st.columns(2)
