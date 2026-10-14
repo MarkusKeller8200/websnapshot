@@ -207,12 +207,13 @@ def job_controls(site_id, url, limit, snap_kind):
                        "snapshot_save":"Snapshot speichern",
                        "document_metadata":"Dokument-Metadaten",
                        "diagnostic_save":"Diagnosedaten speichern"}
-                st.dataframe([{"Phase":names.get(k,k),"Anzahl":v["count"],
+                timing_rows=[{"Phase":names.get(k,k),"Anzahl":v["count"],
                               "Minimum (ms)":v["min_ms"],
                               "Durchschnitt (ms)":v["avg_ms"],
                               "Maximum (ms)":v["max_ms"]}
-                              for k,v in perf.items()],hide_index=True,
-                             width="stretch")
+                              for k,v in perf.items()]
+                st.dataframe(timing_rows,hide_index=True,width="stretch",
+                             column_config=streamlit_columns(timing_rows))
                 st.caption(f"Statische HTML-Seiten: {info.get('static_pages',0)} · "
                            f"Browser ohne deutliche JS-Änderung: {info.get('browser_static_pages',0)} · "
                            f"Browser mit dynamischen Inhalten (Indiz): {info.get('browser_dynamic_pages',0)} · "
@@ -385,6 +386,12 @@ if current_page == "Snapshot starten":
                        f"Timeout: {global_config['page_timeout']} s · "
                        f"Parallele HTTP-Aufrufe: {global_config['http_workers']}. "
                        "Anpassbar unter «Einstellungen».")
+            if int(limit)>20000 or int(global_config["http_workers"])>=8:
+                st.warning("Belastungstest: Sehr viele URLs oder parallele Anfragen "
+                    "können die Zielwebsite und deinen Rechner erheblich beanspruchen. "
+                    "Zuerst die Erlaubnis und die Serverbelastung prüfen; "
+                    "robots.txt wird beachtet. Laufende Jobs lassen sich "
+                    "kontrolliert abbrechen.")
             job_controls(site_id,site_options[site_id],int(limit),snap_kind)
 
 if current_page == "Snapshot-Verwaltung":
@@ -465,8 +472,9 @@ if current_page == "Snapshot-Verwaltung":
                 if issues:
                     st.dataframe([{"Nr.":i,"Meldung":message}
                         for i,message in enumerate(issues,1)],hide_index=True,width="stretch",height=350,
-                        column_config={"Nr.":st.column_config.Column(width=78),
-                            "Meldung":st.column_config.Column(width=560)})
+                        column_config={"Nr.":st.column_config.Column(
+                            width=column_width([{"Nr.":i,"Meldung":msg}
+                                  for i,msg in enumerate(issues,1)],"Nr."))})
                     st.download_button("Fehlerprotokoll herunterladen",
                         json.dumps(issues,ensure_ascii=False,indent=2),
                         file_name=f"websnapshot_{selected}_errors.json",mime="application/json")
@@ -484,13 +492,14 @@ if current_page == "Snapshot-Verwaltung":
                         "snapshot_save":"Snapshot speichern",
                         "document_metadata":"Dokument-Metadaten",
                         "diagnostic_save":"Diagnose speichern"}
-                    st.dataframe([
+                    timing_rows=[
                         {"Phase":names.get(k,k),"Messungen":v["count"],
                          "Min. (ms)":v["min_ms"],"Ø (ms)":v["avg_ms"],
                          "Max. (ms)":v["max_ms"],"Summe (ms)":v["total_ms"],
                          "Langsamste URL":v.get("slowest_url","")}
-                        for k,v in measured["timings"].items()],
-                        hide_index=True,width="stretch")
+                        for k,v in measured["timings"].items()]
+                    st.dataframe(timing_rows,hide_index=True,width="stretch",
+                        column_config=streamlit_columns(timing_rows))
                     m=st.columns(4)
                     m[0].metric("Statisch (HTTP)",measured["static_pages"])
                     m[1].metric("Browser: kaum dynamisch",measured["browser_static_pages"])
@@ -514,13 +523,11 @@ if current_page == "Snapshot-Verwaltung":
                 a,b=st.columns(2)
                 a.dataframe([{"Pfad":path,"Varianten":count} for path,count in diag["paths"]],
                             hide_index=True,width="stretch",
-                            column_config={"Pfad":st.column_config.Column(width=380),
-                                           "Varianten":st.column_config.Column(width=105)})
+                            column_config={"Pfad":st.column_config.Column(width=380)})
                 b.dataframe([{"Parameter":name,"Vorkommen":count}
                               for name,count in diag["parameters"]],
                             hide_index=True,width="stretch",
-                            column_config={"Parameter":st.column_config.Column(width=290),
-                                           "Vorkommen":st.column_config.Column(width=120)})
+                            column_config={"Parameter":st.column_config.Column(width=290)})
             with st.expander("🗑️ Snapshot löschen"):
                 st.warning("Die Löschung ist endgültig. Full-Snapshots mit abhängigen "
                            "Delta-Snapshots können nicht gelöscht werden.")
@@ -717,8 +724,7 @@ if current_page == "Dokumente":
                                 width=column_width(editor_rows,"Status")),
                             "Grösse (HTTP)":st.column_config.TextColumn("Grösse",
                                 width=column_width(editor_rows,"Grösse (HTTP)")),
-                            "Gespeichert":st.column_config.CheckboxColumn(
-                                "Heruntergeladen",width=column_width(editor_rows,"Gespeichert"))})
+                            "Gespeichert":st.column_config.CheckboxColumn("Heruntergeladen")})
                     visible_selected={row["Dokument"] for row in edited if row["Auswahl"]}
                     selected_urls=merge_visible(
                         selected_urls,all_urls,visible_urls,visible_selected)
