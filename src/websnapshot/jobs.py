@@ -8,6 +8,7 @@ import sqlite3
 import threading
 from .core import DATA, database
 from .inventory import discover_and_snapshot
+from .settings import require_available
 
 _executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="websnapshot")
 _lock = threading.Lock()
@@ -35,6 +36,7 @@ def _connect(data: Path):
 
 def launch(site_id: int, url: str, limit: int, data: Path = DATA) -> tuple[bool, int]:
     """Atomic database claim, safe against double-clicks and independent sessions."""
+    require_available(site_id, data)
     with _lock, _connect(data) as db:
         existing = db.execute("""SELECT id FROM jobs WHERE site_id=?
             AND state IN ('queued','running') ORDER BY id DESC LIMIT 1""", (site_id,)).fetchone()
