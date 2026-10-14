@@ -7,7 +7,7 @@ def filter_documents(documents: list[dict], search: str) -> list[dict]:
     if not query:
         return documents
     return [item for item in documents if query in " ".join(str(item.get(k) or "")
-            for k in ("url", "status", "length")).casefold()]
+            for k in ("url", "status", "length", "title", "author", "created", "modified", "found_on", "property_status")).casefold()]
 
 def bulk_selection(current: Iterable[str], all_urls: Iterable[str],
                    filtered_urls: Iterable[str], action: str) -> set[str]:
