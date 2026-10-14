@@ -109,3 +109,24 @@ def test_static_page_requests_really_run_in_parallel(tmp_path,monkeypatch):
     assert result["static_pages"]==2
     assert peak==2
     assert get_performance(run,tmp_path)["timings"]["page_fetch"]["count"]==2
+
+
+def test_discovery_limit_is_enforced_from_settings(tmp_path,monkeypatch):
+    from websnapshot import inventory
+    with sqlite3.connect(database(tmp_path)) as db:
+        db.execute("INSERT INTO sites(id,url,created_at) VALUES (1,'https://example.org/','now')")
+    monkeypatch.setattr(inventory,"check_public",lambda _url:None)
+    sitemap="<urlset>"+ "".join(
+        f"<url><loc>https://example.org/p{i}</loc></url>" for i in range(30)
+        )+"</urlset>"
+    def fake_fetch(session,url,max_bytes=2_000_000,timeout=3.0):
+        if url.endswith("robots.txt"):return b"","text/plain"
+        if url.endswith("sitemap.xml"):return sitemap.encode(),"application/xml"
+        return b"<html><body>Example</body></html>","text/html"
+    monkeypatch.setattr(inventory,"_fetch",fake_fetch)
+    run,result=discover_and_snapshot(1,"https://example.org/",limit=1,
+        data=tmp_path,
+        config={"discovery_limit":10,"page_timeout":3.0,"http_workers":1})
+    assert result["discovered"]==10
+    assert result["excluded_limits"]["discovery"]>=1
+    assert any("Discovery-Limit (10)" in warning for warning in result["limit_warnings"])
