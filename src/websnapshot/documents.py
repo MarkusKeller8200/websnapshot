@@ -266,6 +266,7 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
             outcomes.append({"url":url,"path":str(target),"bytes":count,
                              "sha256":current_hash,"date_source":date_source,
                              "date":date.strftime("%Y-%m-%d"),
+                             "date_time":date.isoformat(),
                              "content_status":content_status})
         except (requests.RequestException,ValueError,OSError) as exc:
             outcomes.append({"url":url,"error":str(exc)})
