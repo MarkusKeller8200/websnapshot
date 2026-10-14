@@ -141,7 +141,10 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 skipped += 1
                 continue
             if renderer and not urlsplit(url).path.lower().endswith((".pdf",".doc",".docx")):
-                title, content, links = renderer.fetch(url)
+                try:
+                    title, content, links = renderer.fetch(url)
+                except Exception as exc:
+                    raise ValueError(f"Browser konnte Seite nicht erfassen: {exc}") from exc
                 pages[url] = (title,content)
                 if not parent_id:
                     for link in links:
