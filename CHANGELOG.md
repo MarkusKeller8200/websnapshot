@@ -2,6 +2,16 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.14 – Einheitliches Datum und Uhrzeit (14.10.2026)
+- Datums- und Zeitstempel in der Oberfläche auf **YYYY.MM.DD HH:MM:SS** im 24-Stunden-Format vereinheitlicht.
+- Job- und Snapshot-Zeitpunkte inklusive Sekunden; Dashboard, Job-Protokolle und historische Ansichten angepasst.
+- HTTP-Dokumentdaten und eingebettete Word-/PDF-/Excel-Zeitstempel in Dokumentenlisten und Eigenschaften einheitlich formatiert.
+- Bei bekannten Zeitzonen erfolgt die Anzeige in UTC; reine Datumswerte bleiben ohne erfundene Uhrzeit.
+- Bestehende Datenbank- und JSON-Rohwerte sowie das Dateinamen-Schema bleiben unverändert.
+- Automatisierte Regressionstests für ISO, HTTP-Datum, Zeitzonen und alte Logeinträge.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.14.md)
+
 ## v0.6.13 – Discovery beschleunigen und URL-Flut erklären (14.10.2026)
 - robots.txt-Ausschlüsse bei erfolgreich geladenen Regeln **vor** der Aufnahme in die Crawl-Warteschlange berücksichtigen.
 - XML-Sitemap-Einträge unmittelbar filtern und einreihen, ohne eine potenziell riesige Zwischenliste aufzubauen.
