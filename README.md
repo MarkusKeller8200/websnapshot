@@ -4,7 +4,7 @@ Lokale Anwendung für manuell gestartete Website-Snapshots, Versionsvergleiche u
 
 ## Was macht WebSnapshot?
 
-WebSnapshot 0.2.0 ist eine lokal betriebene Python-Anwendung zur manuellen Erfassung, Archivierung und zum Vergleich von Webseiten. So lässt sich beispielsweise heute ein Snapshot einer Website erstellen und nach einem Monat feststellen, welche Textinhalte sich verändert haben.
+WebSnapshot 0.3.0 ist eine lokal betriebene Python-Anwendung zur manuellen Erfassung, Archivierung und zum Vergleich von Webseiten. So lässt sich beispielsweise heute ein Snapshot einer Website erstellen und nach einem Monat feststellen, welche Textinhalte sich verändert haben.
 
 ### Arbeitsablauf
 
@@ -23,7 +23,7 @@ WebSnapshot 0.2.0 ist eine lokal betriebene Python-Anwendung zur manuellen Erfas
 | `changed` | Der gespeicherte Textinhalt unterscheidet sich. |
 | `missing` | Die zuvor erfasste URL fehlt im neueren Snapshot. **Das beweist keine Löschung**; auch Abruffehler oder Crawling-Grenzen können die Ursache sein. |
 
-**Beispiel:** Ändert eine Behörde die Anmeldefrist von «15. Oktober» auf «30. Oktober», zeigt der Textvergleich die alte und die neue Fassung. Eine fachliche KI-Zusammenfassung ist in Version 0.2.0 noch nicht enthalten.
+**Beispiel:** Ändert eine Behörde die Anmeldefrist von «15. Oktober» auf «30. Oktober», zeigt der Textvergleich die alte und die neue Fassung. Eine fachliche KI-Zusammenfassung ist in Version 0.3.0 noch nicht enthalten.
 
 ### Funktionsumfang der ersten Version
 
@@ -36,7 +36,7 @@ WebSnapshot 0.2.0 ist eine lokal betriebene Python-Anwendung zur manuellen Erfas
 | Zwei Snapshots vergleichen | Implementiert |
 | Neue, geänderte und fehlende URLs auflisten | Implementiert |
 | HTML-Änderungsbericht herunterladen | Implementiert |
-| PDF- und Word-Dokumentlinks inventarisieren | Implementiert; ohne Inhaltsdownload |\n| PDF- und Word-Dokumentinhalte auswerten | Geplant |\n| Dashboard mit Website-, Snapshot- und Speicherkennzahlen | Implementiert |\n| Websites hinzufügen und entfernen | Implementiert |\n| Warnung bei ältesten Snapshots über 30 Tagen | Implementiert |\n| GitHub-Update über die Anwendung | Implementiert (Neuladen; kein garantierter Prozessneustart) |
+| PDF- und Word-Dokumentlinks inventarisieren | Implementiert; ohne Inhaltsdownload |\n| PDF- und Word-Dokumentinhalte auswerten | Geplant |\n| Dashboard mit Website-, Snapshot- und Speicherkennzahlen | Implementiert |\n| Websites hinzufügen und entfernen | Implementiert |\n| Warnung bei ältesten Snapshots über 30 Tagen | Implementiert |\n| GitHub-Update über die Anwendung | Implementiert (Neuladen; kein garantierter Prozessneustart) |\n| Live-Status mit Laufzeit, Seiten- und Dokumentzählern | Implementiert |\n| Dokumentliste mit selektivem Download | Implementiert für PDF, DOC und DOCX |\n| Dokumentänderungen erkennen | ETag / Last-Modified / Dateigrösse; kein Inhaltsvergleich ohne Download |
 | Screenshots | Geplant |
 | Dynamische JavaScript-Seiten mit Playwright erfassen | Geplant |
 | KI-Zusammenfassungen und Relevanzbewertung | Geplant |
@@ -136,3 +136,16 @@ Websites können unter «Websites verwalten» hinzugefügt und entfernt werden. 
 Im Tab «Updates» führt die Anwendung lokal `git pull --ff-only` und `pip install -e` aus und lädt die Streamlit-Sitzung neu. Der Update-Vorgang bricht bei lokalen Git-Änderungen oder Fehlern ab. **Das aktuelle Verfahren startet nicht garantiert den gesamten Python-Prozess neu**; bei Änderungen an Abhängigkeiten oder am Streamlit-Server die BAT-Datei schliessen und erneut starten. Eine sichere automatische Prozess-Neustartlogik ist für eine spätere Version vorgesehen.
 
 **Wichtig:** Die Updatefunktion ist nur für eine vertrauenswürdige lokale Einzelplatzinstallation gedacht. Fremden Code aus GitHub zu übernehmen und auszuführen ist ein sicherheitsrelevanter Vorgang. Vor Updates `.data/` sichern.
+
+## Neuerungen in Version 0.3.0
+
+### Live-Status beim Snapshot
+Während der Erfassung werden die verstrichenen Sekunden, entdeckte URLs, besuchte URLs, archivierte HTML-Seiten und gefundene Dokumentlinks laufend angezeigt. Auch die Prüfung der Sitemaps und Dokument-Metadaten erscheint als Phase. Der Lauf ist nicht automatisch abbrechbar oder fortsetzbar.
+
+### Dokumentinventar und manuelle Downloads
+Für jeden **neuen** Snapshot werden erkannte PDF-, DOC- und DOCX-Adressen in der Datenbank gespeichert. In «Snapshots & Vergleich» kann der jeweilige Snapshot ausgewählt werden. Eine Tabelle zeigt Dokument-URL, Metadatenstatus, gemeldete Dateigrösse und Download-Status. Erst nach expliziter Auswahl und Klick auf den Download-Button werden Dateien tatsächlich heruntergeladen (maximal 100 MB je Datei). Das Verzeichnis lautet `.data/downloads/`; Dateien werden nach Website-Host gruppiert. Der Benutzer kann zwischen einer Unterordnerstruktur entsprechend dem URL-Pfad und flacher Ablage wählen. Vorhandene Dateien mit gleichem Zielpfad werden ersetzt; bei flacher Ablage erhält der Name einen URL-Hash zum Schutz vor Namenskonflikten.
+
+**Vergleich mit dem letzten Snapshot:** Die Anwendung prüft über HTTP-HEAD die Metadaten `ETag`, `Last-Modified` und `Content-Length`. Sie unterscheidet «Neu gefunden», «Unverändert laut ETag», «Unverändert laut Metadaten», «Metadaten geändert» und «Nicht prüfbar». Metadatenänderungen sind **kein sicherer Beweis einer Inhaltsänderung**; umgekehrt sind gleiche Metadaten kein kryptografischer Integritätsnachweis. Ein echter Dokumentinhaltsvergleich anhand gespeicherter SHA-256-Prüfsummen bleibt eine künftige Funktion. Bei bestehenden Snapshots aus 0.2 sind keine Einzel-Dokumentlisten vorhanden.
+
+### Wichtige Einschränkungen
+Die Erfassung selbst lädt **keine Dokumentinhalte** herunter, fordert aber zur Statusprüfung leichte HEAD-Antworten an. URLs ausserhalb des ursprünglichen Hosts werden nicht verfolgt; Redirects werden nicht automatisch aufgelöst. Die Zahl gefundener Dokumente entspricht den während des Crawls erreichten Links und ist kein Vollständigkeitsnachweis. Robuste Prüfung von DNS-Rebinding, Download-Dateisignaturen, Unterbrechung und Wiederaufnahme bleiben für eine gehärtete Version vorgesehen.
