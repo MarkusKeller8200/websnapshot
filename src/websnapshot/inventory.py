@@ -1,6 +1,8 @@
 """Enhanced discovery, inventory and local management for WebSnapshot 0.2."""
 from __future__ import annotations
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from time import perf_counter
 from datetime import datetime, timezone
 from pathlib import Path
 import ipaddress
@@ -17,6 +19,8 @@ from .documents import inventory_documents
 from .doclinks import related_document
 from .versions import latest_run, effective_pages, save_partial, mark_full, kind
 from .settings import get as get_capture
+from .global_settings import get as get_global
+from .performance import Timings, save as save_performance
 from hashlib import sha256
 from .diagnostics import canonical, path_key, MAX_DISCOVERED, MAX_PER_PATH, MAX_PER_PAGE, record, record_quality, duplicate_groups
 
@@ -35,9 +39,10 @@ def remove_site(site_id: int, delete_history: bool = False, data: Path = DATA) -
         db.execute("DELETE FROM sites WHERE id=?", (site_id,))
 
 
-def _fetch(session: requests.Session, url: str, max_bytes: int = MAX_BYTES) -> tuple[bytes, str]:
+def _fetch(session: requests.Session, url: str, max_bytes: int = MAX_BYTES,
+           timeout: float = 3.0) -> tuple[bytes, str]:
     check_public(url)
-    with session.get(url, timeout=(5, 20), stream=True, allow_redirects=False) as res:
+    with session.get(url, timeout=(timeout, timeout), stream=True, allow_redirects=False) as res:
         if res.is_redirect:
             raise ValueError("Weiterleitung nicht verfolgt")
         res.raise_for_status()
@@ -53,18 +58,32 @@ def _fetch(session: requests.Session, url: str, max_bytes: int = MAX_BYTES) -> t
 
 
 def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
-                          data: Path = DATA, progress=None, snapshot_kind: str = 'full') -> tuple[int, dict]:
+                          data: Path = DATA, progress=None, snapshot_kind: str = 'full',
+                          config: dict | None = None) -> tuple[int, dict]:
     """Discover sitemap and HTML links; stop at transparent safety limits.
 
     All recorded URLs belong to the same network location, redirects are not followed.
     """
     from time import monotonic
     beginning = monotonic()
+    config = dict(config) if config is not None else get_global(data)
+    discovery_limit = int(config.get("discovery_limit",200000))
+    page_timeout = float(config.get("page_timeout",3.0))
+    http_workers = max(1,min(4,int(config.get("http_workers",3))))
+    timings = Timings()
+    static_pages = browser_static_pages = browser_dynamic_pages = browser_unknown_pages = timeouts = 0
     def emit(**extra):
         if progress:
             current = dict(elapsed=round(monotonic()-beginning, 1), pages=len(pages),
                 documents=len(docs), visited=len(visited), discovered=len(found),
-                visit_limit=limit, discovery_limit=MAX_DISCOVERED,
+                visit_limit=limit, discovery_limit=discovery_limit,
+                page_timeout=page_timeout, http_workers=http_workers,
+                performance=timings.summary(),
+                static_pages=static_pages,
+                browser_static_pages=browser_static_pages,
+                browser_dynamic_pages=browser_dynamic_pages,
+                browser_unknown_pages=browser_unknown_pages,
+                timeouts=timeouts,
                 pending=len(queue), skipped=skipped,
                 excluded_limits=dict(limit_exclusions),
                 limit_warnings=limit_warnings(),
@@ -89,9 +108,10 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     robot = RobotFileParser()
     robot.set_url(origin + "/robots.txt")
     robots_loaded = False
+    discovery_started=perf_counter()
     try:
         # RobotFileParser.read does not expose a bounded timeout; use requests instead.
-        raw, _ = _fetch(session, origin + "/robots.txt", 200_000)
+        raw, _ = _fetch(session, origin + "/robots.txt", 200_000, page_timeout)
         robot.parse(raw.decode("utf-8", "replace").splitlines())
         robots_loaded = True
     except (requests.RequestException, ValueError, OSError):
@@ -122,8 +142,8 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     limit_exclusions={"discovery":0,"path_variants":0,"page_links":0}
     def limit_warnings():
         warnings=[]
-        if len(queued)>=MAX_DISCOVERED or limit_exclusions["discovery"]:
-            warnings.append(f"Discovery-Limit ({MAX_DISCOVERED}) erreicht: {limit_exclusions['discovery']} URL-Kandidaten abgewiesen")
+        if len(found)>=discovery_limit or limit_exclusions["discovery"]:
+            warnings.append(f"Discovery-Limit ({discovery_limit}) erreicht: {limit_exclusions['discovery']} URL-Kandidaten abgewiesen")
         if limit_exclusions["path_variants"]:
             warnings.append(f"Pfadvarianten-Limit ({MAX_PER_PATH}) erreicht: {limit_exclusions['path_variants']} URL-Kandidaten abgewiesen")
         if limit_exclusions["page_links"]:
@@ -136,6 +156,13 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         try:
             link=canonical(link)
             if related_document(link,start):
+                if link in docs:
+                    return
+                if len(found)>=discovery_limit:
+                    limit_exclusions["discovery"]+=1
+                    truncated=True
+                    skipped+=1
+                    return
                 if link not in docs:
                     docs.add(link)
                     found.add(link)
@@ -143,7 +170,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 return
             if urlsplit(link).netloc!=host or link in queued:
                 return
-            if len(queued)>=MAX_DISCOVERED:
+            if len(found)>=discovery_limit:
                 limit_exclusions["discovery"]+=1
                 truncated=True
                 skipped+=1
@@ -165,10 +192,11 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     pages = {}
     sitemap_urls = []
     renderer = None
+    capture_settings=get_capture(site_id,data)
     try:
-        if get_capture(site_id,data)['mode'] == 'browser':
+        if capture_settings['mode'] == 'browser':
             from .browser import BrowserRenderer
-            renderer = BrowserRenderer(start,get_capture(site_id,data))
+            renderer = BrowserRenderer(start,{**capture_settings,"page_timeout":page_timeout})
     except Exception:
         raise
     emit(phase='Sitemaps prüfen')
@@ -176,14 +204,14 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         for line in raw.decode("utf-8", "replace").splitlines():
             if line.lower().startswith("sitemap:"):
                 sitemap_queue.append(line.split(":", 1)[1].strip())
-    while sitemap_queue and len(sitemap_seen) < 25 and len(found) < MAX_DISCOVERED:
+    while sitemap_queue and len(sitemap_seen) < 25 and len(found) < discovery_limit:
         sm = sitemap_queue.popleft()
         try:
             sm = normalize_url(sm)
             if urlsplit(sm).netloc != host or sm in sitemap_seen:
                 continue
             sitemap_seen.add(sm)
-            rawxml, _ = _fetch(session, sm, 4_000_000)
+            rawxml, _ = _fetch(session, sm, 4_000_000, page_timeout)
             root = ET.fromstring(rawxml)
             for node in root.iter():
                 if node.tag.rsplit("}", 1)[-1] != "loc" or not node.text:
@@ -200,60 +228,113 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
             errors.append("Sitemap nicht lesbar: " + sm)
     for link in sitemap_urls:
         enqueue(link,'sitemap')
+    timings.observe("discovery_initial",perf_counter()-discovery_started,origin)
     emit(phase='Seiten durchsuchen')
-    while queue and len(visited) < limit:
-        url = queue.popleft()
-        if url in visited:
-            continue
-        visited.add(url)
-        url_records[url]=(url_records.get(url,('link','',''))[0],'visited','')
-        if urlsplit(url).path.lower().endswith((".pdf", ".docx", ".doc")):
-            docs.add(url)
-            url_records[url]=(url_records[url][0],'document','')
-            emit(phase="Dokument gefunden")
-            continue
-        try:
-            if robots_loaded and not robot.can_fetch(AGENT, url):
-                skipped += 1
-                url_records[url]=(url_records[url][0],'excluded','robots.txt')
-                continue
-            if renderer and not urlsplit(url).path.lower().endswith((".pdf",".doc",".docx")):
-                try:
-                    title, content, links = renderer.fetch(url)
-                except Exception as exc:
-                    raise ValueError(f"Browser konnte Seite nicht erfassen: {exc}") from exc
-                pages[url] = (title,content)
-                url_records[url]=(url_records[url][0],'archived','')
-                if not parent_id:
-                    for link in links[:MAX_PER_PAGE]:
-                        enqueue(link,'browser-link')
-                    if len(links)>MAX_PER_PAGE:
-                        limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
-                        truncated=True
-                emit(phase="Browser-Erfassung")
-                continue
-            body, kind = _fetch(session, url)
-            if "text/html" not in kind:
-                if "pdf" in kind or "msword" in kind or "wordprocessingml" in kind:
+    def fetch_page(url):
+        # Every worker owns its Session; requests.Session is not thread-safe.
+        started=perf_counter()
+        with requests.Session() as client:
+            client.headers["User-Agent"]=AGENT
+            try:
+                result=_fetch(client,url,MAX_BYTES,page_timeout)
+                return result,None,perf_counter()-started
+            except (requests.RequestException,ValueError,OSError) as exc:
+                return None,exc,perf_counter()-started
+
+    with ThreadPoolExecutor(max_workers=1 if renderer else http_workers,
+                            thread_name_prefix="websnapshot-fetch") as executor:
+        while queue and len(visited) < limit:
+            batch=[]
+            while queue and len(visited)<limit and len(batch)<(1 if renderer else http_workers):
+                url=queue.popleft()
+                if url in visited:
+                    continue
+                visited.add(url)
+                url_records[url]=(url_records.get(url,('link','',''))[0],'visited','')
+                if urlsplit(url).path.lower().endswith((".pdf",".docx",".doc")):
                     docs.add(url)
                     url_records[url]=(url_records[url][0],"document","")
-                else:
-                    skipped += 1
-                    url_records[url]=(url_records[url][0],"excluded","not-html")
+                    emit(phase="Dokument gefunden")
+                    continue
+                if robots_loaded and not robot.can_fetch(AGENT,url):
+                    skipped+=1
+                    url_records[url]=(url_records[url][0],"excluded","robots.txt")
+                    emit(phase="robots.txt")
+                    continue
+                batch.append(url)
+            if not batch:
                 continue
-            html = body.decode("utf-8", "replace")
-            title, content, links = extract(html, url)
-            pages[url] = (title, content)
-            url_records[url]=(url_records[url][0],"archived","")
-            for link in (links[:MAX_PER_PAGE] if not parent_id else []):
-                enqueue(link,"html-link")
-            if not parent_id and len(links)>MAX_PER_PAGE:
-                limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
-                truncated=True
-        except (requests.RequestException, ValueError, OSError) as exc:
-            errors.append(f"{url}: {exc}")
-            url_records[url]=(url_records[url][0],"failed",str(exc)[:120])
-        emit(phase="Seiten durchsuchen")
+            if renderer:
+                url=batch[0]
+                started=perf_counter()
+                try:
+                    title,content,links=renderer.fetch(url)
+                    timings.observe("page_fetch",perf_counter()-started,url)
+                    pages[url]=(title,content)
+                    url_records[url]=(url_records[url][0],"archived","")
+                    page_kind=getattr(renderer,"last_page_kind","browser_unknown")
+                    if page_kind=="browser_dynamic":
+                        browser_dynamic_pages+=1
+                    elif page_kind=="browser_static":
+                        browser_static_pages+=1
+                    else:
+                        browser_unknown_pages+=1
+                    if not parent_id:
+                        discovery_tick=perf_counter()
+                        links=[link for link in links if urlsplit(link).netloc==host or related_document(link,start)]
+                        for link in links[:MAX_PER_PAGE]:
+                            enqueue(link,"browser-link")
+                        if len(links)>MAX_PER_PAGE:
+                            limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
+                            truncated=True
+                        timings.observe("discovery_links",perf_counter()-discovery_tick,url)
+                except (requests.RequestException,ValueError,OSError,Exception) as exc:
+                    timings.observe("page_fetch",perf_counter()-started,url)
+                    if "timeout" in str(exc).lower():
+                        timeouts+=1
+                    errors.append(f"{url}: {exc}")
+                    url_records[url]=(url_records[url][0],"failed",str(exc)[:120])
+                emit(phase="Browser-Erfassung")
+                continue
+            outputs=list(executor.map(fetch_page,batch))
+            for url,(reply,error,elapsed) in zip(batch,outputs):
+                timings.observe("page_fetch",elapsed,url)
+                if error is not None:
+                    if isinstance(error,requests.Timeout):
+                        timeouts+=1
+                    errors.append(f"{url}: {error}")
+                    url_records[url]=(url_records[url][0],"failed",str(error)[:120])
+                    emit(phase="Seiten durchsuchen")
+                    continue
+                body,kind=reply
+                if "text/html" not in kind:
+                    if "pdf" in kind or "msword" in kind or "wordprocessingml" in kind:
+                        docs.add(url)
+                        url_records[url]=(url_records[url][0],"document","")
+                    else:
+                        skipped+=1
+                        url_records[url]=(url_records[url][0],"excluded","not-html")
+                    emit(phase="Seiten durchsuchen")
+                    continue
+                try:
+                    title,content,links=extract(body.decode("utf-8","replace"),url)
+                    pages[url]=(title,content)
+                    static_pages+=1
+                    url_records[url]=(url_records[url][0],"archived","")
+                    if not parent_id:
+                        discovery_tick=perf_counter()
+                        links=[link for link in links if urlsplit(link).netloc==host or related_document(link,start)]
+                        for link in links[:MAX_PER_PAGE]:
+                            enqueue(link,"html-link")
+                        if len(links)>MAX_PER_PAGE:
+                            limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
+                            truncated=True
+                        timings.observe("discovery_links",perf_counter()-discovery_tick,url)
+                except (ValueError,TypeError) as exc:
+                    errors.append(f"{url}: {exc}")
+                    url_records[url]=(url_records[url][0],"failed",str(exc)[:120])
+                emit(phase="Seiten durchsuchen")
+
     remaining = len(queue)
     if remaining:
         errors.append(f"Schutzlimit erreicht: {remaining} URLs noch offen")
@@ -262,14 +343,21 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
             errors.append(warning)
     if renderer:
         renderer.close()
+    emit(phase="Snapshot speichern")
+    save_tick=perf_counter()
     if parent_id:
         run_id, changed = save_partial(site_id,pages,errors,parent_id,data)
     else:
         run_id = save(site_id, pages, errors, data)
         mark_full(run_id,data)
         changed = len(pages)
+    timings.observe("snapshot_save",perf_counter()-save_tick,"SQLite")
     emit(phase="Dokument-Metadaten prüfen")
+    metadata_started=perf_counter()
     inventory_documents(run_id, site_id, docs, session, data, progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen", **kw))
+    timings.observe("document_metadata",perf_counter()-metadata_started,"HEAD")
+    emit(phase="Diagnose speichern")
+    diag_started=perf_counter()
     with sqlite3.connect(database(data)) as db:
         db.execute("""CREATE TABLE IF NOT EXISTS inventory (
             run_id INTEGER PRIMARY KEY, discovered INTEGER, documents INTEGER,
@@ -282,13 +370,24 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         documents=len(docs),pending=remaining,skipped=skipped,errors=len(errors),
         duplicate_content=duplicate_groups(pages),truncated=int(truncated or remaining>0),
         warning="Unvollständig" if truncated or remaining or errors else "Abgeschlossen (bekannte URLs)"),data)
-    emit(phase="Fertig", changed=changed, percent=100 if parent_id and remaining == 0 else round(100*len(visited)/max(len(baseline),1),1) if parent_id else None)
+    timings.observe("diagnostic_save",perf_counter()-diag_started,"SQLite")
+    save_performance(run_id,timings,static_pages=static_pages,
+                     browser_static_pages=browser_static_pages,
+                     browser_dynamic_pages=browser_dynamic_pages,
+                     browser_unknown_pages=browser_unknown_pages,
+                     timeouts=timeouts,data=data)
+    emit(phase="Fertig",changed=changed,percent=100 if parent_id and remaining == 0 else round(100*len(visited)/max(len(baseline),1),1) if parent_id else None)
     return run_id, {"snapshot_kind":snapshot_kind, "full_baseline_id":full_id,
                     "changed_since_full":sum(1 for u,(_,content) in pages.items() if u not in full_baseline or sha256(content.encode()).hexdigest()!=full_baseline[u][2]) if parent_id else 0,
                     "discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
                     "excluded_limits":dict(limit_exclusions), "limit_warnings":limit_warnings(),
-                    "sitemaps":len(sitemap_seen), "changed":changed, "errors":errors}
+                    "sitemaps":len(sitemap_seen), "changed":changed, "errors":errors,
+                    "discovery_limit":discovery_limit,"page_timeout":page_timeout,
+                    "http_workers":http_workers,"performance":timings.summary(),
+                    "static_pages":static_pages,"browser_static_pages":browser_static_pages,
+                    "browser_dynamic_pages":browser_dynamic_pages,
+                    "browser_unknown_pages":browser_unknown_pages,"timeouts":timeouts}
 
 
 def storage_bytes(data: Path = DATA) -> int:
