@@ -20,6 +20,7 @@ from .documents import inventory_documents
 from .doclinks import related_document
 from .versions import latest_run, effective_pages, save_partial, mark_full, kind
 from .settings import get as get_capture
+from .crawl_scope import eligible_link, within_scope, is_document, effective_scope
 from .global_settings import get as get_global
 from .performance import Timings, save as save_performance
 from hashlib import sha256
@@ -68,6 +69,8 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     from time import monotonic
     beginning = monotonic()
     config = dict(config) if config is not None else get_global(data)
+    scope_mode = config.get("crawl_scope",get_capture(site_id,data)["crawl_scope"])
+    effective_mode = effective_scope(start,scope_mode)
     discovery_limit = int(config.get("discovery_limit",200000))
     page_timeout = float(config.get("page_timeout",3.0))
     http_workers = max(1,min(10,int(config.get("http_workers",3))))
@@ -88,6 +91,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                 documents=len(docs), visited=len(visited), discovered=len(found),
                 visit_limit=limit, discovery_limit=discovery_limit,
                 page_timeout=page_timeout, http_workers=http_workers,
+                crawl_scope=effective_mode,scope_excluded=scope_excluded,
                 performance=timings.summary(),
                 static_pages=static_pages,
                 browser_static_pages=browser_static_pages,
@@ -159,6 +163,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
         key=path_key(u)
         path_counts[key]=path_counts.get(key,0)+1
     truncated=False
+    scope_excluded=0
     limit_exclusions={"discovery":0,"path_variants":0,"page_links":0}
     def limit_warnings():
         warnings=[]
@@ -172,23 +177,30 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
             warnings.append(f"Besuchslimit ({limit}) erreicht: {len(queue)} URLs offen")
         return warnings
     def enqueue(link, source):
-        nonlocal truncated, skipped
+        nonlocal truncated, skipped, scope_excluded
         try:
             link=canonical(link)
-            if related_document(link,start):
-                if link in docs:
-                    return
+            direct=source in ("html-link","browser-link")
+            related=related_document(link,start) and direct
+            if not (eligible_link(link,start,effective_mode,directly_linked=direct) or related):
+                if urlsplit(link).netloc==host and not within_scope(link,start,effective_mode):
+                    scope_excluded+=1
+                return
+            if link in queued or link in docs:
+                return
+            # Recognise linked documents immediately. They do not consume the
+            # HTML page-visit limit, even when hosted in a shared asset folder.
+            if is_document(link) and (related or urlsplit(link).netloc==host):
                 if len(found)>=discovery_limit:
                     limit_exclusions["discovery"]+=1
                     truncated=True
                     skipped+=1
                     return
-                if link not in docs:
-                    docs.add(link)
-                    found.add(link)
-                    url_records[link]=(source,"document","Zugehöriger Dokument-Host")
-                return
-            if urlsplit(link).netloc!=host or link in queued:
+                docs.add(link)
+                found.add(link)
+                url_records[link]=(source,"document",
+                                   "Zugehöriger Dokument-Host" if related
+                                   else "Verlinktes Dokument")
                 return
             if len(found)>=discovery_limit:
                 limit_exclusions["discovery"]+=1
@@ -238,13 +250,18 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                 if node.tag.rsplit("}", 1)[-1] != "loc" or not node.text:
                     continue
                 link = normalize_url(node.text)
-                if urlsplit(link).netloc != host and not related_document(link,start):
+                if urlsplit(link).netloc != host:
                     continue
                 if root.tag.rsplit("}", 1)[-1] == "sitemapindex":
                     if len(sitemap_seen) + len(sitemap_queue) < 25:
                         sitemap_queue.append(link)
                 else:
-                    sitemap_urls.append(link)
+                    # Avoid enqueuing another department from a domain-wide
+                    # sitemap; only pages/docs within the logical subtree.
+                    if within_scope(link,start,effective_mode):
+                        sitemap_urls.append(link)
+                    else:
+                        scope_excluded+=1
         except (requests.RequestException, ValueError, ET.ParseError, OSError) as exc:
             errors.append("Sitemap nicht lesbar: " + sm)
             if isinstance(exc,requests.Timeout):
@@ -313,7 +330,12 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                         browser_unknown_pages+=1
                     if not parent_id:
                         discovery_tick=perf_counter()
-                        links=[link for link in links if urlsplit(link).netloc==host or related_document(link,start)]
+                        links_allowed=[link for link in links if
+                            eligible_link(link,start,effective_mode) or related_document(link,start)]
+                        scope_excluded+=sum(1 for link in links if
+                            urlsplit(link).netloc==host and
+                            not eligible_link(link,start,effective_mode))
+                        links=links_allowed
                         for link in links[:MAX_PER_PAGE]:
                             enqueue(link,"browser-link")
                         if len(links)>MAX_PER_PAGE:
@@ -356,7 +378,12 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     url_records[url]=(url_records[url][0],"archived","")
                     if not parent_id:
                         discovery_tick=perf_counter()
-                        links=[link for link in links if urlsplit(link).netloc==host or related_document(link,start)]
+                        links_allowed=[link for link in links if
+                            eligible_link(link,start,effective_mode) or related_document(link,start)]
+                        scope_excluded+=sum(1 for link in links if
+                            urlsplit(link).netloc==host and
+                            not eligible_link(link,start,effective_mode))
+                        links=links_allowed
                         for link in links[:MAX_PER_PAGE]:
                             enqueue(link,"html-link")
                         if len(links)>MAX_PER_PAGE:
@@ -411,6 +438,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                      timeouts=timeouts,data=data)
     emit(phase="Fertig",changed=changed,percent=100 if parent_id and remaining == 0 else round(100*len(visited)/max(len(baseline),1),1) if parent_id else None)
     return run_id, {"snapshot_kind":snapshot_kind, "full_baseline_id":full_id,
+                    "crawl_scope":effective_mode,"scope_excluded":scope_excluded,
                     "changed_since_full":changed_from_full,
                     "discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
