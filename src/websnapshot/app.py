@@ -16,6 +16,7 @@ from websnapshot.documents import list_documents, download_selected
 from websnapshot.document_metadata import probe_selected, list_references
 from websnapshot.document_properties import display_properties
 from websnapshot.date_format import format_datetime
+from websnapshot.snapshot_labels import snapshot_choice_label, snapshot_choices, snapshot_type_label
 from websnapshot.jobs import launch, latest, running, recover_interrupted, request_cancel, snapshot_job
 from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
@@ -569,7 +570,7 @@ if current_page == "Snapshot starten":
             a,b=st.columns([3,2],vertical_alignment="bottom")
             with a:
                 snap_kind=st.radio("Snapshot-Art",["full","partial"],
-                    format_func=lambda value:"Full / Baseline" if value=="full" else "Partial / Delta",
+                    format_func=lambda value:snapshot_type_label(value)+(" / Baseline" if value=="full" else " / Delta"),
                     horizontal=True,key=f"snapshot_kind_{site_id}")
             with b:
                 limit=st.number_input("Maximal besuchte URLs",10,100000,int(global_config["visit_limit"]),step=100,
@@ -608,7 +609,7 @@ if current_page == "Snapshot-Verwaltung":
                 seconds=max(0,int((ended-started).total_seconds())) if started and ended else None
                 info=json.loads(job["progress"] or "{}") if job else {}
                 archive_rows.append({
-                    "ID":row[0],"Typ":kind(row[0])[0],
+                    "ID":row[0],"Typ":snapshot_type_label(kind(row[0])[0]),
                     "Zeit (UTC)":format_datetime(row[1]),
                     "Erfassung":"Abgeschlossen" if row[2]=="complete" else
                         "Unvollständig" if row[2]=="partial" else row[2],
@@ -620,9 +621,10 @@ if current_page == "Snapshot-Verwaltung":
                 })
             st.dataframe(archive_rows,hide_index=True,width="stretch",
                 column_config=streamlit_columns(archive_rows),height=min(440,36*(len(history)+1)+20))
+            snapshot_labels=snapshot_choices(history,kind)
             selected=st.selectbox("Snapshot-Details", [r[0] for r in history],
                                   key=f"snapshot_manage_{site_id}",
-                                  format_func=lambda i:f"Snapshot #{i} · {kind(i)[0]}")
+                                  format_func=lambda i:snapshot_labels[i])
             record=next(r for r in history if r[0]==selected)
             job=snapshot_job(selected)
             progress=json.loads(job["progress"] or "{}") if job else {}
@@ -833,9 +835,12 @@ if current_page == "Änderungsvergleich":
             st.info("Für einen Vergleich müssen mindestens zwei Snapshots gespeichert sein.")
         else:
             ids=[r[0] for r in history]
+            snapshot_labels=snapshot_choices(history,kind)
             before_col,after_col=st.columns(2)
-            old_id=before_col.selectbox("Vorher",ids,index=1,key=f"before_{site_id}")
-            new_id=after_col.selectbox("Nachher",ids,index=0,key=f"after_{site_id}")
+            old_id=before_col.selectbox("Vorher",ids,index=1,key=f"before_{site_id}",
+                format_func=lambda i:snapshot_labels[i])
+            new_id=after_col.selectbox("Nachher",ids,index=0,key=f"after_{site_id}",
+                format_func=lambda i:snapshot_labels[i])
             if old_id==new_id:
                 st.info("Bitte zwei unterschiedliche Snapshots auswählen.")
             else:
@@ -891,6 +896,7 @@ if current_page == "Dokumente":
         if not history:
             st.info("Noch keine Snapshots oder Dokumente erfasst.")
         else:
+            snapshot_labels=snapshot_choices(history,kind)
             doc_run = st.selectbox("Dokumentinventar", [r[0] for r in history],
                                    key=f"document_run_{site_id}")
             docs = list_documents(doc_run)
@@ -1142,9 +1148,10 @@ if current_page == "Sitemap":
         if not history:
             st.info("Für diese Website existiert noch kein Snapshot.")
         else:
+            snapshot_labels=snapshot_choices(history,kind)
             selected_run=st.selectbox("Snapshot",
                 [r[0] for r in history],key=f"sitemap_run_{site_id}",
-                format_func=lambda i:f"Snapshot #{i}")
+                format_func=lambda i:snapshot_labels[i]
             # Read URLs/titles/lengths from SQLite, not potentially huge HTML bodies.
             table=effective_page_metadata(selected_run)
             tools_left,tools_right=st.columns([3,2],vertical_alignment="bottom")
