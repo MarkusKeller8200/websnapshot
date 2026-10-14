@@ -175,3 +175,9 @@ Viele moderne Websites rendern Inhalte erst im Browser über JavaScript. Die bis
 Neu sind Playwright-/Chromium-Erfassung für dynamische Webseiten, Full-Baselines und Partial-/Delta-Snapshots mit Wiederverwendung der URL-Liste, sicheres Löschen nicht benötigter Full-Snapshots sowie eine tabellarische Sitemap mit Browser-Links. Partial-Snapshots speichern nur Änderungen an bekannten Seiten und benötigen ihre Baseline. Die Löschfunktion verhindert das Entfernen von Baselines mit abhängigen Deltas und das einzelne Löschen von Delta-Snapshots. Details und Grenzen stehen in [Version 0.6.0](docs/VERSION_0.6.0.md).
 
 **Chromium einmalig installieren:** Nach `git pull` und `pip install -e ".[dev]"` in der Projektumgebung zusätzlich `python -m playwright install chromium` ausführen. Unter Windows mit `.venv313\\Scripts\\python.exe -m playwright install chromium`.
+
+## Versionen 0.6.1–0.6.3
+
+Die neueste 0.6.x-Fassung enthält einen Schutz gegen URL-Explosionen (normalisierte Query-Parameter, Grenzwerte für Discovery, Pfadvarianten und Links je Seite), eine Crawl-Diagnose mit URL-Herkunft und Qualitätskennzahlen sowie die Erkennung von PDF-/Word-Dokumenten anhand des HTTP-Inhaltstyps auch hinter PHP-Download-URLs. Dokumente werden weiterhin nur nach ausdrücklicher Auswahl heruntergeladen. Der kontrollierte Abbruch von Hintergrund-Jobs ist nun über die Oberfläche möglich. Hinweise zu Grenzen und Funktionsumfang: [Release 0.6.1–0.6.3](docs/RELEASE_0.6.1-0.6.3.md).
+
+**Wichtig:** Die Grenzwerte schützen vor URL-Explosionen, können aber auch legitime URLs begrenzen. Eine als vollständig gemeldete Erfassung bezieht sich ausschliesslich auf die bekannten und zulässigen URLs. Neue Features sind eingecheckt, jedoch noch nicht durch einen vollständigen Windows-Integrationstest bestätigt.
