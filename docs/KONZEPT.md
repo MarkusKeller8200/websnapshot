@@ -59,3 +59,37 @@ Keine automatische Überwachung, keine KI, keine Browser-Emulation, keine PDFs, 
 
 ## 8. Roadmap
 0.1 Lokaler Prototyp; 0.2 robustere Fehlerbehandlung und Tests; 0.3 PDF-Dokumente; 0.4 Playwright; 0.5 optionale lokale KI-Analyse; 1.0 produktionsreifer Desktop- und Serverbetrieb.
+
+## 9. Vollständigkeit der Website-Erfassung (geplant)
+
+### 9.1 Problemstellung
+Bei fremden Websites sind Anzahl und Verschachtelung der Unterseiten unbekannt. Eine feste Linktiefe oder maximale Seitenzahl kann daher unbemerkt Inhalte ausschliessen. Der aktuelle Crawler (0.1) verarbeitet ausschliesslich über HTML-Links erreichbare Seiten innerhalb vorgegebener Grenzen; **Vollständigkeit wird nicht zugesichert**.
+
+### 9.2 Soll-Verfahren
+1. **Discovery:** Start-URL, robots.txt mit dort genannten Sitemap-Adressen, `/sitemap.xml`, Sitemap-Indizes und zusätzliche benutzerdefinierte Sitemap-Adressen auswerten.
+2. **Rekursive Linksuche:** Alle bekannten zulässigen HTML-Seiten untersuchen und interne Links nachverfolgen, bis die Warteschlange leer ist. Dabei eine automatische Tiefenbegrenzung vermeiden; Schutzlimits für Laufzeit, Datenmenge, Seitenzahl und Request-Rate bleiben nötig.
+3. **Kanonisierung:** Fragmente entfernen, Redirects und Canonical-Links nachvollziehbar behandeln; Query-Parameter nicht unbesehen löschen, da sie eigene Inhalte kennzeichnen können. Subdomains nur nach expliziter Freigabe aufnehmen.
+4. **Inhaltstypen:** HTML erfassen; Dokumente wie PDF/DOCX als separat zu behandelnde Assets inventarisieren (Extraktion spätere Version). JavaScript-gesteuerte Seiten später mit Playwright ergänzen.
+5. **Persistente Warteschlange:** URLs und Status `gefunden`, `in Bearbeitung`, `erfolgreich`, `fehlgeschlagen`, `ausgeschlossen` oder `offen` protokollieren. Ein abgebrochener Lauf muss fortsetzbar sein.
+6. **Abschlusskontrolle:** Anzahl gefundener, erfolgreich erfasster, fehlgeschlagener, ausgeschlossener und offener URLs sowie Herkunft jeder URL (Sitemap/Link/manuell) anzeigen. Bei Fehlern Wiederholversuche anbieten und Gründe dokumentieren.
+
+### 9.3 Qualitätskennzahlen und Aussagekraft
+`Erfassungsgrad = erfolgreich verarbeitete URLs / alle bekannten URLs` (sofern Nenner > 0). Der Wert sagt nur etwas über **bekannte** URLs aus; er ist kein objektiver Nachweis, dass sämtliche existierenden URLs entdeckt wurden.
+
+Vorgesehene Zustände:
+- **Abgeschlossen:** Alle bekannten und zulässigen URLs sind verarbeitet; keine Warteschlange mehr offen.
+- **Unvollständig:** Bekannte URLs oder Dokumente sind noch offen, ausgeschlossen oder fehlgeschlagen.
+- **Umfang unbekannt:** Nicht inventarisierbare Bereiche (z. B. Login, dynamische Navigation, fehlende Sitemap) verhindern eine belastbare Aussage.
+
+Auch bei einem abgeschlossenen Crawl können unverlinkte, nicht in Sitemaps aufgeführte, zugriffsgeschützte oder dynamisch generierte Seiten fehlen. Das wird in UI und Export ausdrücklich kenntlich gemacht.
+
+### 9.4 Versionsvergleich
+Eine zuvor erfasste, bei der nächsten Inventarisierung aber fehlende URL bleibt zunächst **nicht nachgewiesen**. Erst zusätzliche URL-Prüfungen könnten eine tatsächliche Entfernung nahelegen; auch HTTP 404/410 und Weiterleitungen müssen mit Zeitstempel erfasst werden. Abruffehler niemals als Löschung melden.
+
+### 9.5 Abnahmekriterien für einen künftigen Release
+- Sitemap-Index und verschachtelte Sitemaps werden verarbeitet.
+- Rekursion arbeitet bis zur leeren Warteschlange oder einem transparent ausgewiesenen Abbruchlimit.
+- Jede bekannte URL hat Erfassungsstatus, Quelle und Fehlerprotokoll.
+- Wiederaufnahme eines unterbrochenen Crawls ist möglich.
+- Erfassungsgrad und Umfangseinschränkungen sind in Oberfläche und Änderungsbericht sichtbar.
+- Nicht erfasste URLs werden nicht automatisch als gelöschte Seiten eingestuft.
