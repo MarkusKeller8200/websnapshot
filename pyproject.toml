@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "websnapshot"
-version = "0.5.0"
+version = "0.6.0"
 description = "Manual local website snapshots and change reports"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
-dependencies = ["streamlit>=1.38,<2", "requests>=2.32,<3", "beautifulsoup4>=4.12,<5"]
+dependencies = ["streamlit>=1.38,<2", "requests>=2.32,<3", "beautifulsoup4>=4.12,<5", "playwright>=1.55,<2"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
