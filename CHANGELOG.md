@@ -2,6 +2,19 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.5 – Vereinheitlichte Oberfläche, Dokument-Renamer und Einstellungen (14.10.2026)
+- Abgeschnittenen WebSnapshot-Titel korrigiert und Navigation vollständig in den linken, einklappbaren Menübaum überführt; Schaltflächen, Symbole und Beschriftungen linksbündig.
+- Snapshot starten, Snapshot-Verwaltung, Änderungsvergleich, Dokumentdownload und Job-Protokolle als eigenständige Ansichten aufgeteilt.
+- HTML-Textänderungen farbig im Browser als Vorher-/Nachher-Vergleich ansehen, mit optionalem HTML-Export.
+- Intelligente Spaltenbreiten für Dashboard-, Archiv-, Diagnose-, Dokument- und Sitemap-Tabellen.
+- Dokument-Renamer mit pro Website einstellbarem Herkunftskürzel (z. B. DSB / SEKB), Datum aus PDF-/DOCX-/HTTP-Metadaten und unterschiedlichen Grossschreibungsmodi; Originalnamen weiterhin möglich.
+- Neue Dateien mit `YYYY_MM_DD_HERKUNFT_Dokumentenname` ohne URL-Hash benennen, Leerzeichen durch Unterstriche ersetzen; Konflikte durch `_2`, `_3` usw. lösen.
+- Prüfsummen (SHA-256) und Datumsherkunft intern speichern; Dokumentänderungen bei erneutem Download anhand des Hashwerts erkennen.
+- Neuer globaler Menüpunkt «Einstellungen» für Download-Pfad, Standard-Ordnerstruktur, Besuchslimit und Sitemap-Höhe.
+- Neue Regressionstests für Renamer, Einstellungen, GUI-Struktur und Tabellenbreiten.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.5.md)
+
 ## v0.6.4 – Navigation, Auswahl und Oberfläche
 - Einklappbare linke Webseiten-Navigation mit Symbolen und Suchfilter; die Auswahl gilt über alle Funktionsbereiche.
 - Entfernte Website-Dropdowns in der Snapshot-Zentrale und Sitemap.
