@@ -41,7 +41,10 @@ def launch(site_id: int, url: str, limit: int, data: Path = DATA, snapshot_kind:
     """Atomic database claim, safe against double-clicks and independent sessions."""
     if snapshot_kind not in ('full','partial'):
         raise ValueError('Unbekannter Snapshottyp')
-    get_capture(site_id,data)
+    capture=get_capture(site_id,data)
+    setup={"site_url":url,"visit_limit":limit,"capture_mode":capture["mode"],
+           "wait_selector":capture.get("wait_selector",""),
+           "wait_ms":capture.get("wait_ms",0),"snapshot_kind":snapshot_kind}
     with _lock, _connect(data) as db:
         existing = db.execute("""SELECT id FROM jobs WHERE site_id=?
             AND state IN ('queued','running') ORDER BY id DESC LIMIT 1""", (site_id,)).fetchone()
@@ -50,7 +53,7 @@ def launch(site_id: int, url: str, limit: int, data: Path = DATA, snapshot_kind:
         now = datetime.now(timezone.utc).isoformat()
         try:
             cur = db.execute("""INSERT INTO jobs(site_id,url,state,started_at,progress)
-                VALUES(?,?,?,?,?)""",(site_id,url,"queued",now,"{}"))
+                VALUES(?,?,?,?,?)""",(site_id,url,"queued",now,json.dumps(setup,ensure_ascii=False)))
             job_id = cur.lastrowid
             db.commit()
         except sqlite3.IntegrityError:
@@ -67,8 +70,10 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
             cancelled=db.execute("SELECT cancel_requested FROM jobs WHERE id=?",(job_id,)).fetchone()
             if cancelled and cancelled[0]:
                 raise JobCancelled("Vom Benutzer abgebrochen")
+            old=db.execute("SELECT progress FROM jobs WHERE id=?",(job_id,)).fetchone()
+            combined={**json.loads(old[0] or "{}"),**update}
             db.execute("UPDATE jobs SET progress=? WHERE id=?",
-                       (json.dumps(update,ensure_ascii=False),job_id))
+                       (json.dumps(combined,ensure_ascii=False),job_id))
             db.commit()
     try:
         with _connect(data) as db:
