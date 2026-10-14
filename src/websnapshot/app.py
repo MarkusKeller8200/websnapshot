@@ -220,15 +220,17 @@ with tab_overview:
         st.info("Noch keine Websites registriert. Unter «Websites verwalten» hinzufügen.")
 
 with tab_sites:
-    with st.form("add_site", clear_on_submit=True):
-        url = st.text_input("Neue Website (https://...)")
-        if st.form_submit_button("Website hinzufügen"):
-            try:
-                add_site(url)
-                st.success("Website gespeichert.")
-                st.rerun()
-            except (ValueError, OSError) as exc:
-                st.error(str(exc))
+    st.subheader("Websites verwalten")
+    with st.expander("➕ Neue Website hinzufügen", expanded=False):
+        with st.form("add_site", clear_on_submit=True):
+            url = st.text_input("Neue Website (https://...)")
+            if st.form_submit_button("Website hinzufügen"):
+                try:
+                    add_site(url)
+                    st.success("Website gespeichert.")
+                    st.rerun()
+                except (ValueError, OSError) as exc:
+                    st.error(str(exc))
     if active_site_id is not None:
         entry = next((e for e in dashboard() if e["id"]==active_site_id), None)
         if entry:
@@ -319,69 +321,70 @@ with tab_snapshots:
                 })
             st.dataframe(archive_rows, hide_index=True, width="stretch",
                          height=min(360,36*(len(archive_rows)+1)+8))
-            detail_id = st.selectbox("Zusammenfassung und Fehlerprotokoll",
-                [r[0] for r in history], key="snapshot_detail",
-                format_func=lambda i:f"Snapshot #{i} · {kind(i)[0]}")
-            detail_row = next(row for row in history if row[0]==detail_id)
-            job = snapshot_job(detail_id)
-            info = json.loads(job["progress"] or "{}") if job else {}
-            issues = json.loads(detail_row[3] or "[]")
-            with st.container(border=True):
-                st.markdown(f"**Snapshot #{detail_id} – Job-Zusammenfassung**")
-                if job:
-                    started = datetime.fromisoformat(job["started_at"])
-                    ended = datetime.fromisoformat(job["ended_at"]) if job["ended_at"] else None
-                    duration = (ended-started).total_seconds() if ended else info.get("duration_seconds")
-                    st.caption(f"Job #{job['id']} · {job['state']} · "
-                               f"Start: {started.strftime('%d.%m.%Y %H:%M:%S')} UTC · "
-                               f"Ende: {ended.strftime('%d.%m.%Y %H:%M:%S') if ended else '—'} UTC")
-                    if duration is not None:
-                        duration = max(0,int(duration))
-                        st.write(f"**Gesamtlaufzeit:** {duration//3600:02d}:"
-                                 f"{duration//60%60:02d}:{duration%60:02d}")
-                else:
-                    st.caption("Für diesen älteren Snapshot wurden keine Job-Zeitdaten gespeichert.")
-                st.caption(f"Snapshot-Typ: {kind(detail_id)[0]} · "
-                           f"Erfassungsstatus: {'Abgeschlossen' if detail_row[2]=='complete' else 'Unvollständig' if detail_row[2]=='partial' else detail_row[2]}")
-                if info:
-                    st.caption(f"Modus: {info.get('capture_mode','nicht erfasst')} · "
-                               f"URL-Limit: {info.get('visit_limit','nicht erfasst')} · "
-                               f"Letzte Phase: {info.get('phase','—')} · "
-                               f"URL: {info.get('site_url', options[site_id])}")
-                values = [
-                    ("Entdeckte URLs","discovered"),("Besuchte URLs","visited"),
-                    ("Archivierte Seiten","pages"),("Dokumente","documents"),
-                    ("Noch offen","pending"),("Übersprungen","skipped"),
-                    ("Sitemaps","sitemaps"),("Änderungen","changed")]
-                st.dataframe([{"Kennzahl":name,"Wert":info.get(key,"Nicht vorhanden")}
-                              for name,key in values],hide_index=True,
-                             width="stretch",height=320)
-                if info.get("limit_warnings"):
-                    st.warning("Erreichte Schutzlimits: " + " · ".join(info["limit_warnings"]))
-                    st.caption("Abgewiesene URL-Kandidaten nach Ursache: "
-                               + json.dumps(info.get("excluded_limits",{}),ensure_ascii=False))
-                if info.get("snapshot_kind")=="partial":
-                    st.caption(f"Full-Baseline: #{info.get('full_baseline_id','—')} · "
-                               f"Änderungen zur Full-Baseline: {info.get('changed_since_full','—')}")
-                with st.expander(f"Fehler- und Warnungsprotokoll ({len(issues)})",
-                                 expanded=bool(issues)):
-                    if issues:
-                        st.dataframe([{"Nr.":i,"Meldung":msg}
-                            for i,msg in enumerate(issues,1)],hide_index=True,
-                            width="stretch",height=min(500,40*len(issues)+40))
-                        st.download_button("Fehlerprotokoll als JSON herunterladen",
-                            json.dumps({"snapshot_id":detail_id,"errors":issues},
-                                       ensure_ascii=False,indent=2),
-                            file_name=f"websnapshot_{detail_id}_errors.json",
-                            mime="application/json",key=f"download_errors_{detail_id}")
+            with st.expander("🧾 Snapshot-Zusammenfassung und Fehlerprotokoll", expanded=False):
+                detail_id = st.selectbox("Zusammenfassung und Fehlerprotokoll",
+                    [r[0] for r in history], key="snapshot_detail",
+                    format_func=lambda i:f"Snapshot #{i} · {kind(i)[0]}")
+                detail_row = next(row for row in history if row[0]==detail_id)
+                job = snapshot_job(detail_id)
+                info = json.loads(job["progress"] or "{}") if job else {}
+                issues = json.loads(detail_row[3] or "[]")
+                with st.container(border=True):
+                    st.markdown(f"**Snapshot #{detail_id} – Job-Zusammenfassung**")
+                    if job:
+                        started = datetime.fromisoformat(job["started_at"])
+                        ended = datetime.fromisoformat(job["ended_at"]) if job["ended_at"] else None
+                        duration = (ended-started).total_seconds() if ended else info.get("duration_seconds")
+                        st.caption(f"Job #{job['id']} · {job['state']} · "
+                                   f"Start: {started.strftime('%d.%m.%Y %H:%M:%S')} UTC · "
+                                   f"Ende: {ended.strftime('%d.%m.%Y %H:%M:%S') if ended else '—'} UTC")
+                        if duration is not None:
+                            duration = max(0,int(duration))
+                            st.write(f"**Gesamtlaufzeit:** {duration//3600:02d}:"
+                                     f"{duration//60%60:02d}:{duration%60:02d}")
                     else:
-                        st.success("Keine protokollierten Fehler oder Warnungen.")
-                st.download_button("Job-Zusammenfassung als JSON herunterladen",
-                    json.dumps({"snapshot_id":detail_id,"kind":kind(detail_id)[0],
-                                "status":detail_row[2],"job":job,
-                                "errors":issues},ensure_ascii=False,indent=2),
-                    file_name=f"websnapshot_{detail_id}_summary.json",
-                    mime="application/json",key=f"download_summary_{detail_id}")
+                        st.caption("Für diesen älteren Snapshot wurden keine Job-Zeitdaten gespeichert.")
+                    st.caption(f"Snapshot-Typ: {kind(detail_id)[0]} · "
+                               f"Erfassungsstatus: {'Abgeschlossen' if detail_row[2]=='complete' else 'Unvollständig' if detail_row[2]=='partial' else detail_row[2]}")
+                    if info:
+                        st.caption(f"Modus: {info.get('capture_mode','nicht erfasst')} · "
+                                   f"URL-Limit: {info.get('visit_limit','nicht erfasst')} · "
+                                   f"Letzte Phase: {info.get('phase','—')} · "
+                                   f"URL: {info.get('site_url', options[site_id])}")
+                    values = [
+                        ("Entdeckte URLs","discovered"),("Besuchte URLs","visited"),
+                        ("Archivierte Seiten","pages"),("Dokumente","documents"),
+                        ("Noch offen","pending"),("Übersprungen","skipped"),
+                        ("Sitemaps","sitemaps"),("Änderungen","changed")]
+                    st.dataframe([{"Kennzahl":name,"Wert":info.get(key,"Nicht vorhanden")}
+                                  for name,key in values],hide_index=True,
+                                 width="stretch",height=320)
+                    if info.get("limit_warnings"):
+                        st.warning("Erreichte Schutzlimits: " + " · ".join(info["limit_warnings"]))
+                        st.caption("Abgewiesene URL-Kandidaten nach Ursache: "
+                                   + json.dumps(info.get("excluded_limits",{}),ensure_ascii=False))
+                    if info.get("snapshot_kind")=="partial":
+                        st.caption(f"Full-Baseline: #{info.get('full_baseline_id','—')} · "
+                                   f"Änderungen zur Full-Baseline: {info.get('changed_since_full','—')}")
+                    with st.expander(f"Fehler- und Warnungsprotokoll ({len(issues)})",
+                                     expanded=bool(issues)):
+                        if issues:
+                            st.dataframe([{"Nr.":i,"Meldung":msg}
+                                for i,msg in enumerate(issues,1)],hide_index=True,
+                                width="stretch",height=min(500,40*len(issues)+40))
+                            st.download_button("Fehlerprotokoll als JSON herunterladen",
+                                json.dumps({"snapshot_id":detail_id,"errors":issues},
+                                           ensure_ascii=False,indent=2),
+                                file_name=f"websnapshot_{detail_id}_errors.json",
+                                mime="application/json",key=f"download_errors_{detail_id}")
+                        else:
+                            st.success("Keine protokollierten Fehler oder Warnungen.")
+                    st.download_button("Job-Zusammenfassung als JSON herunterladen",
+                        json.dumps({"snapshot_id":detail_id,"kind":kind(detail_id)[0],
+                                    "status":detail_row[2],"job":job,
+                                    "errors":issues},ensure_ascii=False,indent=2),
+                        file_name=f"websnapshot_{detail_id}_summary.json",
+                        mime="application/json",key=f"download_summary_{detail_id}")
 
 
             section_compare, section_documents, section_quality, section_logs, section_manage = st.tabs(
