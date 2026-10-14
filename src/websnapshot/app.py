@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[2]
 st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide")
 st.title("WebSnapshot")
-st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.6.0")
+st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.6.3")
 
 tab_overview, tab_sites, tab_snapshots, tab_map, tab_system = st.tabs(
     ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Sitemap", "Updates"])
