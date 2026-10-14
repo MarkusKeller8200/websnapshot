@@ -42,6 +42,8 @@ def previous_document_metadata(parent_id: int | None,
     actual parent chain rather than using an unrelated earlier site run.
     """
     init(data)
+    from .versions import init as init_snapshot_versions
+    init_snapshot_versions(data)  # Legacy Full snapshots may lack snapshot_meta.
     with sqlite3.connect(database(data)) as db:
         seen=set()
         cursor=parent_id
