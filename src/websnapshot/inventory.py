@@ -72,8 +72,17 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     http_workers = max(1,min(4,int(config.get("http_workers",3))))
     timings = Timings()
     static_pages = browser_static_pages = browser_dynamic_pages = browser_unknown_pages = timeouts = 0
+    changed_count = changed_from_full = 0
+    last_emit = 0.0
+    last_phase = None
     def emit(**extra):
-        if progress:
+        nonlocal last_emit,last_phase
+        phase=extra.get("phase")
+        now=monotonic()
+        if progress and (phase!=last_phase or now-last_emit>=0.75
+                         or phase=="Fertig"):
+            last_emit=now
+            last_phase=phase
             current = dict(elapsed=round(monotonic()-beginning, 1), pages=len(pages),
                 documents=len(docs), visited=len(visited), discovered=len(found),
                 visit_limit=limit, discovery_limit=discovery_limit,
@@ -88,11 +97,9 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 excluded_limits=dict(limit_exclusions),
                 limit_warnings=limit_warnings(),
                 snapshot_kind=snapshot_kind, total_urls=len(baseline) if parent_id else None,
-                changed=sum(1 for u,(_,content) in pages.items() if u not in baseline or
-                    sha256(content.encode()).hexdigest()!=baseline[u][2]) if parent_id else 0,
+                changed=changed_count,
                 baseline_id=parent_id, full_baseline_id=full_id,
-                changed_since_full=sum(1 for u,(_,content) in pages.items() if
-                    u not in full_baseline or sha256(content.encode()).hexdigest()!=full_baseline[u][2]) if parent_id else 0)
+                changed_since_full=changed_from_full)
             if parent_id:
                 current['percent']=round(100*min(len(visited),len(baseline))/max(len(baseline),1),1)
             current.update(extra)
@@ -125,6 +132,14 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         while kind(full_id,data)[1] is not None:
             full_id=kind(full_id,data)[1]
     full_baseline=effective_pages(full_id,data) if full_id else {}
+    def register_change(url,content):
+        nonlocal changed_count,changed_from_full
+        if parent_id:
+            digest=sha256(content.encode()).hexdigest()
+            if url not in baseline or digest!=baseline[url][2]:
+                changed_count+=1
+            if url not in full_baseline or digest!=full_baseline[url][2]:
+                changed_from_full+=1
     queue = deque(baseline.keys()) if parent_id else deque([start])
     queued = set(queue) if parent_id else {start}
     visited = set()
@@ -271,6 +286,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                     title,content,links=renderer.fetch(url)
                     timings.observe("page_fetch",perf_counter()-started,url)
                     pages[url]=(title,content)
+                    register_change(url,content)
                     url_records[url]=(url_records[url][0],"archived","")
                     page_kind=getattr(renderer,"last_page_kind","browser_unknown")
                     if page_kind=="browser_dynamic":
@@ -319,6 +335,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 try:
                     title,content,links=extract(body.decode("utf-8","replace"),url)
                     pages[url]=(title,content)
+                    register_change(url,content)
                     static_pages+=1
                     url_records[url]=(url_records[url][0],"archived","")
                     if not parent_id:
@@ -378,7 +395,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                      timeouts=timeouts,data=data)
     emit(phase="Fertig",changed=changed,percent=100 if parent_id and remaining == 0 else round(100*len(visited)/max(len(baseline),1),1) if parent_id else None)
     return run_id, {"snapshot_kind":snapshot_kind, "full_baseline_id":full_id,
-                    "changed_since_full":sum(1 for u,(_,content) in pages.items() if u not in full_baseline or sha256(content.encode()).hexdigest()!=full_baseline[u][2]) if parent_id else 0,
+                    "changed_since_full":changed_from_full,
                     "discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
                     "excluded_limits":dict(limit_exclusions), "limit_warnings":limit_warnings(),
