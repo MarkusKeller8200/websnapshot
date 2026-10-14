@@ -106,3 +106,14 @@ Eine zuvor erfasste, bei der nächsten Inventarisierung aber fehlende URL bleibt
 **Einschränkungen:** Kein Beweis für die Vollständigkeit; Crawling ohne persistenten Wiederaufnahmestatus; keine dokumentenbezogenen Snapshots; fehlende URLs sind nicht als gelöscht nachgewiesen; Grundabsicherung gegen lokale Adressen ersetzt keine umfassende SSRF-Härtung für fremd erreichbare Server. Das Dashboard zeigt pro Website die gespeicherte Textmenge, während die tatsächliche SQLite-Dateigrösse nur insgesamt sinnvoll erfasst wird.
 
 **Nächste Aufgaben:** Fortsetzbare URL-Queue und dauerhaftes Einzel-URL-Protokoll, separater Dokument-Inventarstand je Snapshot, vollständiger sicherer Neustart nach Updates, verbesserte Crawl-Abdeckung und Tests auf Windows/macOS.
+
+## 11. Version 0.3.0 – Snapshot-Fortschritt und Dokumentdownloads
+
+- Live-Fortschritt: Laufzeit in Sekunden, Crawl-Phase, entdeckte und besuchte URLs, erfolgreich gespeicherte HTML-Seiten und erkannte PDF-/Word-Links.
+- Pro Snapshot eine Liste von Dokumenten (`documents`): URL, ETag, Last-Modified, Content-Length und daraus abgeleiteter Veränderungsstatus.
+- Die Dokumente werden beim Snapshot **nicht heruntergeladen**, sondern nur via HTTP-HEAD auf Metadaten geprüft (soweit der Server dies unterstützt).
+- Der Benutzer kann in der Oberfläche einzelne Dokumente auswählen und explizit herunterladen. Ablage in `.data/downloads/<host>/`, entweder mit URL-Unterordnern oder flach. Die heruntergeladenen Dateien werden mit SHA-256-Prüfsumme und Speicherort im lokalen Download-Protokoll registriert.
+- Downloadgrenze 100 MB pro Datei; keine automatischen Redirects, keine privaten Netzwerke; Dateinamen werden bereinigt. Bestehende Ziele werden beim erneuten Download ersetzt.
+- Statusdefinition: `Neu gefunden`, `Unverändert laut ETag`, `Unverändert laut Metadaten`, `Metadaten geändert`, `Nicht prüfbar`. **Keine Gleichsetzung von Metadatenänderung und sicher verifiziertem Inhaltswechsel.** Dokumente werden zunächst nicht inhaltlich verglichen.
+
+**Offene Aufgaben:** Vollständiger SHA-256-Vergleich heruntergeladener Versionen, dauerhafte Dokumenthistorie unabhängig von Downloads, echter Crawlabbruch/Fortsetzung, Download-Fortschrittsanzeige pro Datei und die Absicherung gegen fortgeschrittene Server-/Netzwerkangriffe. Die in Version 0.3.0 hinzugefügten Funktionen benötigen weitere Praxistests.
