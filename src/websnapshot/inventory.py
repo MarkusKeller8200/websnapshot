@@ -116,13 +116,17 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     robot.set_url(origin + "/robots.txt")
     robots_loaded = False
     discovery_started=perf_counter()
+    robots_started=perf_counter()
     try:
         # RobotFileParser.read does not expose a bounded timeout; use requests instead.
         raw, _ = _fetch(session, origin + "/robots.txt", 200_000, page_timeout)
         robot.parse(raw.decode("utf-8", "replace").splitlines())
         robots_loaded = True
-    except (requests.RequestException, ValueError, OSError):
-        pass
+    except (requests.RequestException, ValueError, OSError) as exc:
+        if isinstance(exc,requests.Timeout):
+            timeouts+=1
+    finally:
+        timings.observe("robots_fetch",perf_counter()-robots_started,origin+"/robots.txt")
     parent_id = latest_run(site_id,data) if snapshot_kind == 'partial' else None
     if snapshot_kind == 'partial' and parent_id is None:
         raise ValueError('Für Partial-Snapshots wird ein Baseline-Snapshot benötigt')
@@ -221,6 +225,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 sitemap_queue.append(line.split(":", 1)[1].strip())
     while sitemap_queue and len(sitemap_seen) < 25 and len(found) < discovery_limit:
         sm = sitemap_queue.popleft()
+        sitemap_started=perf_counter()
         try:
             sm = normalize_url(sm)
             if urlsplit(sm).netloc != host or sm in sitemap_seen:
@@ -239,8 +244,13 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                         sitemap_queue.append(link)
                 else:
                     sitemap_urls.append(link)
-        except (requests.RequestException, ValueError, ET.ParseError, OSError):
+        except (requests.RequestException, ValueError, ET.ParseError, OSError) as exc:
             errors.append("Sitemap nicht lesbar: " + sm)
+            if isinstance(exc,requests.Timeout):
+                timeouts+=1
+        finally:
+            timings.observe("sitemap_fetch",perf_counter()-sitemap_started,sm)
+            emit(phase="Sitemaps prüfen")
     for link in sitemap_urls:
         enqueue(link,'sitemap')
     timings.observe("discovery_initial",perf_counter()-discovery_started,origin)
