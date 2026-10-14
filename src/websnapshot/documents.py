@@ -8,6 +8,8 @@ import sqlite3
 from urllib.parse import unquote, urlsplit
 import requests
 from .core import DATA, AGENT, check_public, database, normalize_url
+from .document_metadata import info_by_url, store_properties
+from .document_properties import extract_properties
 
 EXTS = (".pdf", ".doc", ".docx")
 MAX_DOWNLOAD = 100 * 1024 * 1024
@@ -94,8 +96,23 @@ def list_documents(run_id: int, data: Path = DATA) -> list[dict]:
            FROM documents WHERE run_id=? ORDER BY url""",(run_id,)).fetchall()
         downloaded = {url:(path,size) for url,path,size in db.execute(
             "SELECT url,path,bytes FROM downloads WHERE run_id=? ORDER BY id", (run_id,))}
-    return [dict(url=u,status=s,etag=e,last_modified=m,length=l,
-                 downloaded=downloaded.get(u)) for u,s,e,m,l in entries]
+    meta=info_by_url(run_id,data)
+    result=[]
+    for u,s,e,m,l in entries:
+        properties=meta.get(u,{})
+        embedded=properties.get("properties",{})
+        result.append(dict(
+            url=u,status=s,etag=e,last_modified=m,length=l,
+            downloaded=downloaded.get(u),
+            properties=embedded,sha256=properties.get("sha256"),
+            property_status=properties.get("property_status"),
+            property_error=properties.get("property_error"),
+            examined_at=properties.get("examined_at"),
+            found_on=properties.get("found_on"),
+            references=properties.get("references",0),
+            title=embedded.get("title"),author=embedded.get("creator"),
+            created=embedded.get("created"),modified=embedded.get("modified")))
+    return result
 
 
 def _clean(value: str) -> str:
@@ -168,9 +185,14 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
                     raise ValueError("Weiterleitung nicht verfolgt")
                 res.raise_for_status()
                 kind=res.headers.get("Content-Type","").lower()
-                if not any(value in kind for value in ("application/pdf",
-                        "msword","wordprocessingml.document")):
-                    raise ValueError("Antwort hat keinen PDF-/Word-Inhaltstyp")
+                if any(value in kind for value in ("text/html","application/xhtml+xml")):
+                    raise ValueError("Antwort ist HTML, kein Dokument")
+                if not any(value in kind for value in (
+                        "application/pdf","msword","wordprocessingml.document",
+                        "spreadsheetml.sheet","vnd.ms-excel",
+                        "text/plain","text/csv","application/csv",
+                        "application/octet-stream")):
+                    raise ValueError("HTTP-Inhaltstyp ist kein unterstütztes Dokument")
                 source_name=filename_from_headers(
                     url,res.headers.get("Content-Disposition"))
                 extension=resolve_extension(source_name,kind)
@@ -184,7 +206,15 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
                             raise ValueError("Datei überschreitet 100 MB")
                         handle.write(chunk)
                         digest.update(chunk)
-                date_sources=file_metadata_dates(temp,extension)
+                try:
+                    document_props=extract_properties(temp,extension)
+                except Exception:
+                    document_props={}
+                date_sources=[
+                    ("Eingebettetes Änderungsdatum",document_props.get("modified")),
+                    ("Eingebettetes Erstellungsdatum",document_props.get("created")),
+                ]
+                date_sources.extend(file_metadata_dates(temp,extension))
                 date_sources.extend([
                     ("HTTP Last-Modified (Download)",res.headers.get("Last-Modified")),
                     ("HTTP Last-Modified (Inventar)",known.get(url)),
@@ -212,6 +242,7 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
                         target.unlink(missing_ok=True)
                         raise
             current_hash=digest.hexdigest()
+            store_properties(run_id,url,document_props,current_hash,data=data)
             prior_hash=previous_hashes.get(url)
             content_status=("Neu" if prior_hash is None else
                 "Unverändert (SHA-256)" if prior_hash==current_hash else
