@@ -120,7 +120,8 @@ def destination(url: str, root: Path, flat: bool, content_type: str = "") -> Pat
 
 def download_selected(run_id: int, urls: list[str], flat: bool = False,
                       data: Path = DATA, progress=None,
-                      profile: dict | None = None) -> list[dict]:
+                      profile: dict | None = None,
+                      destination_root: Path | None = None) -> list[dict]:
     """Download only selected URLs, preserve SHA-256, never overwrite existing files.
 
     In dated mode document metadata is preferred. If neither embedded nor HTTP
@@ -135,7 +136,7 @@ def download_selected(run_id: int, urls: list[str], flat: bool = False,
     )
     init(data)
     profile = profile or default_profile()
-    root = data / "downloads"
+    root = Path(destination_root) if destination_root is not None else data / "downloads"
     with sqlite3.connect(database(data)) as db:
         known = {u:last_modified for u,last_modified in db.execute(
             "SELECT url,last_modified FROM documents WHERE run_id=?", (run_id,))}
