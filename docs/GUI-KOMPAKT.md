@@ -5,3 +5,7 @@ Die Oberfläche von WebSnapshot 0.6.3 wurde platzsparender gestaltet. Die Inhalt
 Im Tab «Sitemap» ist die Tabellenhöhe über einen Regler mit **350, 550, 800, 1'100 oder 1'500 Pixeln** einstellbar. Die Tabelle nutzt die ganze verfügbare Breite und zeigt je Seite Pfad, Titel, Zeichenzahl, Original-Link und URL in einer Zeile. Zusätzlich kann die integrierte Vollbildansicht der Streamlit-Tabelle über deren Werkzeugleiste verwendet werden.
 
 Die Bedienung ist bereits im Quellcode angepasst. Für die Überprüfung auf Windows und mit unterschiedlichen Bildschirmgrössen ist ein manueller Test nötig. Die Änderungen betreffen keine vorhandenen Snapshots oder Datenbankinhalte.
+
+## Snapshot-Zentrale – übersichtlicher Aufbau
+
+Im Bereich «Snapshots & Vergleich» sind die Einstellungen zum Starten eines Jobs und die Live-Anzeige direkt oben angeordnet. Darunter folgt das kompakte Snapshot-Archiv. Die weiteren Funktionen befinden sich in vier Unterregistern: «Änderungen vergleichen», «Dokumente», «Crawl-Diagnose» und «Verwaltung». Dadurch bleiben grosse Diagnoseauswertungen und Dokumentlisten verborgen, solange sie nicht benötigt werden. Die bestehende Full-/Partial-Auswahl, exklusive Job-Sperre, Dokumentdownloads, Vergleichsexporte und Löschschutzregeln bleiben erhalten.
