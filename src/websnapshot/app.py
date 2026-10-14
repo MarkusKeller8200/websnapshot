@@ -266,6 +266,11 @@ with tab_snapshots:
                     st.caption("Für diesen älteren Snapshot wurden keine Job-Zeitdaten gespeichert.")
                 st.caption(f"Snapshot-Typ: {kind(detail_id)[0]} · "
                            f"Erfassungsstatus: {'Abgeschlossen' if detail_row[2]=='complete' else 'Unvollständig' if detail_row[2]=='partial' else detail_row[2]}")
+                if info:
+                    st.caption(f"Modus: {info.get('capture_mode','nicht erfasst')} · "
+                               f"URL-Limit: {info.get('visit_limit','nicht erfasst')} · "
+                               f"Letzte Phase: {info.get('phase','—')} · "
+                               f"URL: {info.get('site_url', options[site_id])}")
                 values = [
                     ("Entdeckte URLs","discovered"),("Besuchte URLs","visited"),
                     ("Archivierte Seiten","pages"),("Dokumente","documents"),
