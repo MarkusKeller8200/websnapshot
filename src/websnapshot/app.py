@@ -122,6 +122,10 @@ site_options = dict(sites())
 if st.session_state.get("active_site_id") not in site_options:
     st.session_state["active_site_id"] = next(iter(site_options), None)
 active_site_id = st.session_state["active_site_id"]
+if st.session_state.get("ws_site_dropdown") not in site_options:
+    st.session_state["ws_site_dropdown"]=active_site_id
+def sync_selected_site():
+    st.session_state["active_site_id"]=st.session_state["ws_site_dropdown"]
 if "ws_compact_nav" not in st.session_state:
     st.session_state["ws_compact_nav"] = False
 compact_nav=bool(st.session_state["ws_compact_nav"])
