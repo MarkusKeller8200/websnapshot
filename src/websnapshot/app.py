@@ -193,106 +193,146 @@ with tab_sites:
 with tab_snapshots:
     options = dict(sites())
     if not options:
-        st.info("Bitte zuerst eine Website hinzufügen.")
+        st.info("Bitte zuerst unter «Websites verwalten» eine Website hinzufügen.")
     else:
-        site_id = st.selectbox("Website auswählen", list(options),
-                               format_func=lambda i: options[i])
+        st.subheader("Snapshot-Zentrale")
+        left, right = st.columns([3, 2], vertical_alignment="bottom")
+        with left:
+            site_id = st.selectbox("Website", list(options), format_func=lambda i:options[i],
+                                   key="snapshot_site")
         capture = get_capture(site_id)
-        st.caption(f"Erfassungsmodus: **{MODES[capture['mode']]}** – "
-                   "änderbar unter «Websites verwalten».")
-        if capture["mode"] != STATIC:
-            st.info("Browsermodus rendert JavaScript-Inhalte mit Chromium.")
-        limit = st.number_input("Sicherheitslimit: maximal besuchte URLs", 10, 20000, 1000,
-                                step=100)
-        st.caption("Automatische Sitemaps und rekursive Linksuche ohne feste Linktiefe. "
-                   "Das Schutzlimit verhindert endlose Crawls. robots.txt wird berücksichtigt.")
-        snap_kind = st.radio("Snapshot-Art",["full","partial"],format_func=lambda x: "Full / Baseline" if x=="full" else "Partial / Delta",horizontal=True)
-        job_controls(site_id,options[site_id],int(limit),snap_kind)
+        with right:
+            st.caption(f"Erfassung: {MODES[capture['mode']]} · "
+                       "Einstellungen unter «Websites verwalten»")
+
         history = runs(site_id)
-        st.subheader("Snapshot-Verlauf")
-        st.dataframe([{"ID":r[0],"Typ":kind(r[0])[0],"Zeitpunkt (UTC)":r[1],"Status":r[2],
-                       "Fehler":len(json.loads(r[3]))} for r in history],
-                     hide_index=True, use_container_width=True)
-        if history:
-            st.subheader("Crawl-Diagnose und Qualität")
-            diagnostic_id=st.selectbox("Diagnose zu Snapshot", [r[0] for r in history], key="diagnostic_run")
-            diag=summary(diagnostic_id)
-            q=diag["quality"]
-            if q:
-                st.write(f"**Qualitätsstatus:** {q[10]}")
-                a,bx,cc,dd=st.columns(4)
-                a.metric("Bekannte URLs",q[1])
-                bx.metric("Besucht",q[2])
-                cc.metric("Archiviert",q[3])
-                dd.metric("Offen",q[5])
-                if q[9]:
-                    st.warning("Erfassungsgrenzen erreicht; Snapshot ist unvollständig.")
-                st.caption(f"Duplikate mit gleichem HTML-Text: {q[8]} · Fehler: {q[7]}")
-            with st.expander("URL-Herkunft, Ausschlüsse und auffällige Muster"):
-                st.write("Quellen",diag["sources"])
-                st.write("Zustände",diag["statuses"])
-                st.write("Ausschlussgründe",diag["reasons"])
-                st.dataframe([{"Pfad":p,"Varianten":n} for p,n in diag["paths"]],hide_index=True)
-                st.dataframe([{"Parameter":p,"Vorkommen":n} for p,n in diag["parameters"]],hide_index=True)
-        if history:
-            st.subheader("Snapshot entfernen")
-            remove_id = st.selectbox("Snapshot", [r[0] for r in history],key="remove_snapshot")
-            confirm = st.checkbox("Dauerhaft löschen bestätigen",key="confirm_snapshot")
-            if st.button("Snapshot löschen", disabled=not confirm or running()>0):
-                try:
-                    remove_snapshot(site_id,remove_id)
-                    st.success("Snapshot entfernt")
-                    st.rerun()
-                except ValueError as exc:
-                    st.error(str(exc))
-        if history:
-            st.subheader("PDF- und Word-Dokumente")
-            doc_run = st.selectbox("Dokumentinventar aus Snapshot", [r[0] for r in history],
-                                   key="document_run")
-            docs = list_documents(doc_run)
-            if docs:
-                st.caption("Beim Snapshot werden nur URLs und, soweit verfügbar, HTTP-Metadaten "
-                           "(ETag, Änderungsdatum, Dateigrösse) geprüft. "
-                           "Ohne belastbare Metadaten bleibt der Änderungsstatus unbekannt.")
-                st.dataframe([{"Dokument":d["url"], "Änderungsstatus":d["status"],
-                               "Grösse (HTTP)":d["length"] or "Unbekannt",
-                               "Heruntergeladen": bool(d["downloaded"])} for d in docs],
-                             hide_index=True, use_container_width=True)
-                selected = st.multiselect("Dokumente für Download auswählen",
-                                          options=[d["url"] for d in docs])
-                mode = st.radio("Ordnerstruktur",["Wie auf der Website","Alle Dateien in einem Ordner"],
-                                horizontal=True)
-                if st.button(f"{len(selected)} ausgewählte Dokumente herunterladen",
-                             disabled=not selected):
-                    with st.spinner("Dokumente werden heruntergeladen …"):
-                        outcomes = download_selected(doc_run,selected,
-                                                      flat=mode.startswith("Alle"))
-                    for item in outcomes:
-                        if "error" in item:
-                            st.error(f"{item['url']}: {item['error']}")
-                        else:
-                            st.success(f"Gespeichert: {item['path']} ({item['bytes']} Bytes)")
-                    st.caption("Zielverzeichnis: .data/downloads; nur ausgewählte Dateien "
-                               "werden heruntergeladen. Bestehende Dateinamen werden dabei ersetzt.")
-            else:
-                st.info("Keine PDF- oder Word-Dokumente für diesen Snapshot inventarisiert. "
-                        "Snapshots aus Version 0.2 enthalten noch keine detaillierte Dokumentliste.")
-        if len(history) > 1:
-            ids = [row[0] for row in history]
-            a,b = st.columns(2)
-            old_id = a.selectbox("Älterer Snapshot", ids, index=1)
-            new_id = b.selectbox("Neuerer Snapshot", ids, index=0)
-            if old_id != new_id:
-                changes = compare(old_id,new_id)
-                st.metric("Unterschiede",len(changes))
-                for item in changes:
-                    with st.expander(f"{item['kind'].upper()} · {item['url']}"):
-                        st.code(item["diff"] or "Kein Text-Diff", language="diff")
-                st.download_button("HTML-Änderungsbericht herunterladen",
-                                   report(changes,old_id,new_id),
-                                   file_name=f"websnapshot_{old_id}_{new_id}.html",
-                                   mime="text/html")
-                st.caption("Eine fehlende Seite bedeutet nicht, dass sie gelöscht wurde.")
+        with st.container(border=True):
+            st.markdown("**Neuen Snapshot starten**")
+            setup_left, setup_right = st.columns([3, 2], vertical_alignment="bottom")
+            with setup_left:
+                snap_kind = st.radio("Snapshot-Typ", ["full","partial"],
+                    format_func=lambda x:"Full / Baseline" if x=="full" else "Partial / Delta",
+                    horizontal=True, key="snapshot_kind")
+            with setup_right:
+                limit = st.number_input("Maximal besuchte URLs", min_value=10,
+                    max_value=20000, value=1000, step=100, key="snapshot_limit")
+            st.caption("Full entdeckt Seiten über Sitemaps und Links; Partial prüft bereits "
+                       "bekannte URLs. Pro Website ist höchstens ein Job gleichzeitig möglich.")
+            job_controls(site_id, options[site_id], int(limit), snap_kind)
+
+        st.markdown("**Snapshot-Archiv**")
+        if not history:
+            st.info("Für diese Website sind noch keine Snapshots gespeichert.")
+        else:
+            st.dataframe([
+                {"ID":r[0], "Typ":kind(r[0])[0],
+                 "Datum (UTC)":r[1].replace("T"," ")[:19],
+                 "Status":r[2], "Fehler":len(json.loads(r[3]))}
+                for r in history], hide_index=True, width="stretch",
+                height=min(360, 36 * (len(history) + 1) + 8))
+
+            section_compare, section_documents, section_quality, section_manage = st.tabs(
+                ["Änderungen vergleichen", "Dokumente", "Crawl-Diagnose", "Verwaltung"])
+
+            with section_compare:
+                if len(history) < 2:
+                    st.info("Für einen Vergleich werden zwei Snapshots benötigt.")
+                else:
+                    ids = [row[0] for row in history]
+                    older, newer = st.columns(2)
+                    old_id = older.selectbox("Ausgangs-Snapshot", ids, index=1,
+                                            key="compare_old")
+                    new_id = newer.selectbox("Vergleichs-Snapshot", ids, index=0,
+                                            key="compare_new")
+                    if old_id == new_id:
+                        st.info("Bitte zwei unterschiedliche Snapshots auswählen.")
+                    else:
+                        changes = compare(old_id, new_id)
+                        st.metric("Erkannte Textunterschiede", len(changes))
+                        st.download_button("HTML-Änderungsbericht herunterladen",
+                            report(changes, old_id, new_id),
+                            file_name=f"websnapshot_{old_id}_{new_id}.html",
+                            mime="text/html", key="comparison_export")
+                        st.caption("Fehlende Seiten sind nicht automatisch gelöscht.")
+                        for item in changes:
+                            with st.expander(f"{item['kind'].upper()} · {item['url']}"):
+                                st.code(item["diff"] or "Kein Text-Diff", language="diff")
+
+            with section_documents:
+                doc_run = st.selectbox("Dokumentinventar", [r[0] for r in history],
+                                       key="document_run")
+                docs = list_documents(doc_run)
+                st.caption("PDF- und Word-Dateien werden erst nach expliziter Auswahl "
+                           "heruntergeladen. Änderungsstatus basiert auf HTTP-Metadaten.")
+                if not docs:
+                    st.info("Für diesen Snapshot ist keine Dokumentliste vorhanden.")
+                else:
+                    st.dataframe([
+                        {"Dokument":d["url"], "Status":d["status"],
+                         "Grösse (HTTP)":d["length"] or "Unbekannt",
+                         "Gespeichert":bool(d["downloaded"])}
+                        for d in docs], hide_index=True, width="stretch", height=420)
+                    chosen_docs = st.multiselect("Dokumente auswählen",
+                        [d["url"] for d in docs], key="selected_documents")
+                    layout = st.radio("Ablage", ["Website-Ordnerstruktur", "Flacher Ordner"],
+                                      horizontal=True, key="document_layout")
+                    if st.button(f"{len(chosen_docs)} Dokumente herunterladen",
+                                 disabled=not chosen_docs, key="download_documents"):
+                        outcomes = download_selected(doc_run, chosen_docs,
+                                                     flat=layout=="Flacher Ordner")
+                        for item in outcomes:
+                            if "error" in item:
+                                st.error(f"{item['url']}: {item['error']}")
+                            else:
+                                st.success(f"Gespeichert: {item['path']}")
+                        st.caption("Download-Verzeichnis: .data/downloads")
+
+            with section_quality:
+                diagnostic_id = st.selectbox("Snapshot für Diagnose",
+                    [r[0] for r in history], key="diagnostic_run")
+                diag = summary(diagnostic_id)
+                quality = diag["quality"]
+                if quality:
+                    st.write(f"**Erfassungsstatus:** {quality[10]}")
+                    metrics = st.columns(4)
+                    for column,label,value in zip(metrics,
+                        ["URLs bekannt","Besucht","Archiviert","Offen"],
+                        [quality[1],quality[2],quality[3],quality[5]]):
+                        column.metric(label,value)
+                    if quality[9]:
+                        st.warning("Sicherheitslimit erreicht: Erfassung unvollständig.")
+                    st.caption(f"Inhaltsduplikate: {quality[8]} · Fehler: {quality[7]}")
+                else:
+                    st.info("Für diesen älteren Snapshot sind keine Diagnosedaten vorhanden.")
+                with st.expander("Quellen, Ausschlüsse und URL-Muster"):
+                    st.write("Quellen", diag["sources"])
+                    st.write("Zustände", diag["statuses"])
+                    st.write("Ausschlüsse", diag["reasons"])
+                    patterns_left, patterns_right = st.columns(2)
+                    with patterns_left:
+                        st.dataframe([{"Pfad":p,"Varianten":n} for p,n in diag["paths"]],
+                                     hide_index=True,width="stretch")
+                    with patterns_right:
+                        st.dataframe([{"Parameter":p,"Vorkommen":n}
+                                      for p,n in diag["parameters"]],
+                                     hide_index=True,width="stretch")
+
+            with section_manage:
+                st.caption("Full-Snapshots können nur gelöscht werden, wenn keine "
+                           "abhängigen Delta-Snapshots vorhanden sind.")
+                remove_id = st.selectbox("Snapshot zum Löschen",
+                    [r[0] for r in history], key="remove_snapshot",
+                    format_func=lambda i:f"#{i} · {kind(i)[0]}")
+                confirm = st.checkbox("Dauerhafte Löschung bestätigen",
+                                      key="confirm_snapshot")
+                if st.button("Snapshot löschen", key="delete_snapshot",
+                             disabled=not confirm or running()>0):
+                    try:
+                        remove_snapshot(site_id,remove_id)
+                        st.success("Snapshot gelöscht.")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
 
 with tab_map:
     st.subheader("Sitemap / erfasste Seiten")
