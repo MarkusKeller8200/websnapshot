@@ -277,3 +277,5 @@ Alle Auswahllisten für Snapshots nutzen nun **`Symbol - YYYY.MM.DD HH:MM:SS - I
 Die Darstellung gilt in der Snapshot-Verwaltung, beim Vorher/Nachher-Vergleich, im Dokumentinventar sowie in der Sitemap. Auch die Auswahl der Snapshot-Art und die Typ-Spalte im Archiv verwenden die Icons. Die bereits gespeicherten Snapshots werden automatisch mit dem neuen Format beschriftet; ihre IDs und Zeitstempel werden nicht verändert.
 
 Details: [Release-Notizen v0.6.15](docs/releases/v0.6.15.md) und [CHANGELOG](CHANGELOG.md).
+
+In der Sitemap-Baumansicht öffnet der neue Button **«🗂️ Alle Ebenen»** alle Verzeichnisebenen. Die bestehende Begrenzung auf 2'500 gleichzeitig sichtbare Einträge schützt grosse Snapshots.
