@@ -28,6 +28,9 @@ def _connect(data: Path):
         message TEXT NOT NULL DEFAULT '',
         run_id INTEGER
     )""")
+    columns={r[1] for r in connection.execute("PRAGMA table_info(jobs)")}
+    if "cancel_requested" not in columns:
+        connection.execute("ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0")
     connection.execute("""CREATE UNIQUE INDEX IF NOT EXISTS one_active_job_per_site
         ON jobs(site_id) WHERE state IN ('queued','running')""")
     connection.commit()
@@ -61,6 +64,9 @@ def launch(site_id: int, url: str, limit: int, data: Path = DATA, snapshot_kind:
 def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_kind: str) -> None:
     def progress(**update):
         with _connect(data) as db:
+            cancelled=db.execute("SELECT cancel_requested FROM jobs WHERE id=?",(job_id,)).fetchone()
+            if cancelled and cancelled[0]:
+                raise JobCancelled("Vom Benutzer abgebrochen")
             db.execute("UPDATE jobs SET progress=? WHERE id=?",
                        (json.dumps(update,ensure_ascii=False),job_id))
             db.commit()
@@ -75,6 +81,11 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
                 (datetime.now(timezone.utc).isoformat(),run_id,
                  f"{result['pages']} Seiten, {result['documents']} Dokumente",
                  json.dumps({**{k:v for k,v in result.items() if k!='errors'}, "snapshot_kind":snapshot_kind, "percent":100 if snapshot_kind=="partial" and not result["pending"] else None}),job_id))
+            db.commit()
+    except JobCancelled as exc:
+        with _connect(data) as db:
+            db.execute("UPDATE jobs SET state='cancelled',ended_at=?,message=? WHERE id=?",
+                       (datetime.now(timezone.utc).isoformat(),str(exc),job_id))
             db.commit()
     except Exception as exc:
         with _connect(data) as db:
@@ -107,3 +118,15 @@ def recover_interrupted(data: Path = DATA) -> int:
             (datetime.now(timezone.utc).isoformat(),))
         db.commit()
         return cur.rowcount
+
+
+class JobCancelled(Exception):
+    pass
+
+def request_cancel(site_id: int, data: Path = DATA) -> bool:
+    """Request cooperative stop; worker releases unique job lock after next callback."""
+    with _connect(data) as db:
+        cur=db.execute("""UPDATE jobs SET cancel_requested=1 WHERE site_id=?
+            AND state IN ('queued','running')""",(site_id,))
+        db.commit()
+        return cur.rowcount>0
