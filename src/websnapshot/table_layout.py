@@ -48,12 +48,17 @@ def widths(rows: Sequence[Mapping]) -> dict[str,int]:
 
 
 def streamlit_columns(rows: Sequence[Mapping], *, links=(), checks=()) -> dict:
-    """Preserve dataframe column types; set widths only, plus explicit links."""
+    """Fit all but the last column; leave the last one flexible."""
     import streamlit as st
     links=set(links)
     checks=set(checks)
     result={}
+    last_column = next(reversed(rows[0])) if rows else None
     for name,value in widths(rows).items():
+        # Explicit pixel widths for all columns except the final one.
+        # The last column is left to Streamlit to use the remaining width.
+        if name == last_column:
+            continue
         if name in links:
             result[name]=st.column_config.LinkColumn(name,width=value)
         elif name in checks:
