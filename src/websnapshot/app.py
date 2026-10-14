@@ -53,8 +53,7 @@ st.markdown("""
 [data-testid="stMain"] {min-width: 0 !important;}
 /* The built-in control hides all icons, so the custom menu toggle handles
    expanded vs. compact navigation instead. */
-[data-testid="stSidebarCollapseButton"],
-[data-testid="stSidebarCollapsedControl"] {display:none !important;}
+[data-testid="stSidebarCollapseButton"] {display:none !important;}
 [data-testid="stVerticalBlock"] {gap: .65rem;}
 [data-testid="stMetricValue"] {font-size: 1.5rem;}
 /* Streamlit nests labels in a Markdown wrapper. Align the button AND its
