@@ -219,3 +219,13 @@ Für kontrollierte Belastungstests können jetzt **bis zu 10 parallele HTTP-Work
 Die Sitemap verfügt über einen **aufklappbaren Verzeichnisbaum** mit verschachtelten URL-Pfaden, eine **flache und sortierbare Tabelle** sowie **CSV- und Excel-Exporte**. Die Exporte enthalten alle Seiten des Snapshots. Zur Entlastung wird die Sitemap nur aus Titel-/URL-/Längen-Metadaten aufgebaut. Das Tabellenlayout passt die Breiten aller Spalten ausser der letzten an die angezeigten Inhalte an.
 
 Details: [Release v0.6.7](docs/releases/v0.6.7.md), [CHANGELOG](CHANGELOG.md) und [alle Releases](https://github.com/MarkusKeller8200/websnapshot/releases).
+
+## WebSnapshot v0.6.8 – Unterbereiche erfassen
+
+WebSnapshot kann nun bei einer Unterseite starten und ausschliesslich die darunterliegenden HTML-Pfade erfassen. Beispiel: `https://www.zh.ch/de/bildung.html` umfasst `/de/bildung/...`, aber nicht andere Themenbereiche wie `/de/gesundheit/...`.
+
+Unter **Websites verwalten → Erfassungsbereich** sind Automatik (Unterbereich bei Unterseiten, ganze Domain bei Start `/`), fester Unterbereich oder ganze Domain wählbar. Domainweite Sitemaps werden für die eigentliche URL-Auswahl auf diesen Bereich gefiltert. Direkt verlinkte PDF-/Word-Dateien werden auch aus gemeinsamen Dokumentverzeichnissen inventarisiert; sie dürfen ausserhalb des URL-Unterpfads liegen. Die Anzahl ausgeschlossener URL-Kandidaten wird protokolliert.
+
+Beim Wechsel eines schon vorhandenen domainweiten Snapshots auf einen Unterbereich zuerst einen neuen **Full-Snapshot** durchführen. Delta-Snapshots dürfen keinen alten, zu breiten Datenbestand übernehmen.
+
+Details: [Release v0.6.8](docs/releases/v0.6.8.md), [CHANGELOG](CHANGELOG.md).
