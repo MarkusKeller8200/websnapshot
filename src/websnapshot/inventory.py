@@ -16,6 +16,7 @@ from .core import DATA, MAX_BYTES, AGENT, check_public, database, extract, norma
 from .documents import inventory_documents
 from .versions import latest_run, effective_pages, save_partial, mark_full
 from .settings import get as get_capture
+from hashlib import sha256
 
 
 def remove_site(site_id: int, delete_history: bool = False, data: Path = DATA) -> None:
@@ -53,8 +54,16 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     beginning = monotonic()
     def emit(**extra):
         if progress:
-            progress(elapsed=round(monotonic()-beginning, 1), pages=len(pages),
-                     documents=len(docs), visited=len(visited), discovered=len(found), **extra)
+            current = dict(elapsed=round(monotonic()-beginning, 1), pages=len(pages),
+                documents=len(docs), visited=len(visited), discovered=len(found),
+                snapshot_kind=snapshot_kind, total_urls=len(baseline) if parent_id else None,
+                changed=sum(1 for u,(_,content) in pages.items() if u not in baseline or
+                    sha256(content.encode()).hexdigest()!=baseline[u][2]) if parent_id else 0,
+                baseline_id=parent_id)
+            if parent_id:
+                current['percent']=round(100*min(len(visited),len(baseline))/max(len(baseline),1),1)
+            current.update(extra)
+            progress(**current)
     if snapshot_kind not in ('full','partial'):
         raise ValueError('Ungültiger Snapshottyp')
     start = normalize_url(start)
@@ -135,6 +144,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         visited.add(url)
         if urlsplit(url).path.lower().endswith((".pdf", ".docx", ".doc")):
             docs.add(url)
+            emit(phase="Dokument gefunden")
             continue
         try:
             if robots_loaded and not robot.can_fetch(AGENT, url):
@@ -192,7 +202,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         db.execute("INSERT INTO inventory VALUES (?,?,?,?,?,?,?)",
                    (run_id, len(found), len(docs), len(visited), skipped,
                     remaining, len(sitemap_seen)))
-    emit(phase="Fertig")
+    emit(phase="Fertig", changed=changed, percent=100 if parent_id and remaining == 0 else round(100*len(visited)/max(len(baseline),1),1) if parent_id else None)
     return run_id, {"discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
                     "sitemaps":len(sitemap_seen), "changed":changed, "errors":errors}
