@@ -13,12 +13,13 @@ from websnapshot.core import DATA, add_site, sites, runs, compare, report
 from websnapshot.inventory import dashboard, discover_and_snapshot, remove_site, storage_bytes
 from websnapshot.documents import list_documents, download_selected
 from websnapshot.jobs import launch, latest, running, recover_interrupted
+from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide")
 st.title("WebSnapshot")
-st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.4.0")
+st.caption("Website-Inventarisierung, lokale Snapshots und Änderungsberichte · 0.5.0")
 
 tab_overview, tab_sites, tab_snapshots, tab_map, tab_system = st.tabs(
     ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Sitemap", "Updates"])
@@ -72,6 +73,26 @@ with tab_sites:
         with st.expander(entry["url"], expanded=False):
             st.write(f"Snapshots: {entry['snapshots']} · Seiten: {entry['pages']} · "
                      f"Dokumentlinks: {entry['documents']}")
+            current = get_capture(entry["id"])
+            mode = st.selectbox("Erfassungsmodus", options=list(MODES),
+                format_func=lambda m: MODES[m], index=list(MODES).index(current["mode"]),
+                key=f"mode_{entry['id']}")
+            with st.expander("Erweiterte Browser-Einstellungen (für 0.6.0)"):
+                selector = st.text_input("CSS-Selektor, auf den gewartet werden soll",
+                    value=current["wait_selector"], key=f"selector_{entry['id']}")
+                delay = st.number_input("Zusätzliche Wartezeit in Millisekunden", min_value=0,
+                    max_value=30000, value=current["wait_ms"], step=500,
+                    key=f"delay_{entry['id']}")
+            if mode != STATIC:
+                st.warning("Browsermodus ist erst ab 0.6.0 verfügbar. "
+                           "Es wird kein statischer Snapshot als Ersatz gestartet.")
+            if st.button("Erfassungseinstellungen speichern", key=f"settings_{entry['id']}"):
+                try:
+                    set_settings(entry["id"],mode,selector,int(delay))
+                    st.success("Einstellungen gespeichert.")
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
             deletion = st.checkbox("Auch alle gespeicherten Snapshots dieser Website löschen",
                                    key=f"hist_{entry['id']}")
             confirm = st.checkbox("Entfernung bestätigen", key=f"confirm_{entry['id']}")
@@ -89,6 +110,11 @@ with tab_snapshots:
     else:
         site_id = st.selectbox("Website auswählen", list(options),
                                format_func=lambda i: options[i])
+        capture = get_capture(site_id)
+        st.caption(f"Erfassungsmodus: **{MODES[capture['mode']]}** – "
+                   "änderbar unter «Websites verwalten».")
+        if capture["mode"] != STATIC:
+            st.warning("Browsermodus ist vorbereitet, aber in 0.5.0 nicht ausführbar.")
         limit = st.number_input("Sicherheitslimit: maximal besuchte URLs", 10, 20000, 1000,
                                 step=100)
         st.caption("Automatische Sitemaps und rekursive Linksuche ohne feste Linktiefe. "
@@ -117,8 +143,12 @@ with tab_snapshots:
             return job
         current_job = show_job()
         if st.button("Neuen Snapshot im Hintergrund starten", type="primary",
-                     disabled=bool(current_job and current_job["state"] in ("queued","running"))):
-            started, job_id = launch(site_id,options[site_id],int(limit))
+                     disabled=(capture["mode"] != STATIC or bool(current_job and current_job["state"] in ("queued","running")))):
+            try:
+                started, job_id = launch(site_id,options[site_id],int(limit))
+            except ValueError as exc:
+                st.error(str(exc))
+                st.stop()
             if started:
                 st.success(f"Job #{job_id} gestartet.")
             else:
