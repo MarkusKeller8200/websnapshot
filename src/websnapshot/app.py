@@ -22,6 +22,7 @@ from hashlib import sha1
 from websnapshot.document_selection import filter_documents, bulk_selection, merge_visible
 
 
+from websnapshot.global_settings import get as get_global, save as save_global, VALID_HEIGHTS
 from websnapshot.ui_diff import comparison_html
 from websnapshot.document_renamer import (get_profile, set_profile, RENAMED, ORIGINAL,
     CASE_MODES, filename_from_headers, build_filename, choose_date)
@@ -41,6 +42,9 @@ st.markdown("""
 [data-testid="stSidebar"] {width: 20rem !important; min-width: 20rem !important;}
 [data-testid="stVerticalBlock"] {gap: .65rem;}
 [data-testid="stMetricValue"] {font-size: 1.5rem;}
+/* Navigation: button labels aligned consistently with section labels. */
+[data-testid="stSidebar"] [data-testid="stButton"] button {justify-content: flex-start !important; text-align: left !important;}
+[data-testid="stSidebar"] [data-testid="stButton"] button p {text-align: left !important; width:100%;}
 </style>
 """, unsafe_allow_html=True)
 st.markdown("## 📸 WebSnapshot")
@@ -62,13 +66,15 @@ NAV = [
         ("Job-Protokolle", "📋 Job-Protokolle"),
     ]),
     ("SYSTEM", [
-        ("Updates", "⚙️ Updates"),
+        ("Einstellungen", "⚙️ Einstellungen"),
+        ("Updates", "🔄 Updates"),
     ]),
 ]
 known_pages={ident for _, entries in NAV for ident,_ in entries}
 if st.session_state.get("ws_page") not in known_pages:
     st.session_state["ws_page"] = "Dashboard"
 current_page = st.session_state["ws_page"]
+global_config = get_global()
 site_options = dict(sites())
 if st.session_state.get("active_site_id") not in site_options:
     st.session_state["active_site_id"] = next(iter(site_options), None)
@@ -317,7 +323,7 @@ if current_page == "Snapshot starten":
                     format_func=lambda value:"Full / Baseline" if value=="full" else "Partial / Delta",
                     horizontal=True,key=f"snapshot_kind_{site_id}")
             with b:
-                limit=st.number_input("Maximal besuchte URLs",10,20000,1000,step=100,
+                limit=st.number_input("Maximal besuchte URLs",10,20000,int(global_config["visit_limit"]),step=100,
                                       key=f"snapshot_limit_{site_id}")
             st.caption(f"Modus: {MODES[capture['mode']]} · Erfassungseinstellungen unter "
                        "«Websites verwalten». Bei erreichter Grenze wird der Snapshot als "
@@ -628,21 +634,37 @@ if current_page == "Dokumente":
                 st.session_state[selection_key]=sorted(selected_urls)
                 st.caption(f"**{len(selected_urls)} Dokumente für den Download vorgemerkt** "
                            "– auch ausserhalb des aktuellen Suchfilters.")
+                st.caption("Globales Download-Verzeichnis: "
+                           + str(global_config["download_directory"]))
                 layout = st.radio("Speicherstruktur",
                     ["Website-Ordnerstruktur","Flacher Ordner"],
+                    index=1 if global_config["flat_downloads"] else 0,
                     horizontal=True,key=f"{prefix}_layout")
                 if st.button(f"⬇️ {len(selected_urls)} ausgewählte Dokumente herunterladen",
                              disabled=not selected_urls,key=f"{prefix}_download",
                              type="primary"):
-                    with st.spinner(f"{len(selected_urls)} Dokumente herunterladen …"):
-                        outcomes=download_selected(doc_run,sorted(selected_urls),
-                                                   flat=layout=="Flacher Ordner")
-                    success_count=sum("error" not in item for item in outcomes)
-                    st.success(f"{success_count} von {len(outcomes)} Dokumenten gespeichert.")
-                    for item in outcomes:
-                        if "error" in item:
-                            st.error(f"{item['url']}: {item['error']}")
-                    st.caption("Lokales Verzeichnis: .data/downloads")
+                    try:
+                        set_profile(site_id,mode=renamer_mode,code=renamer_code,
+                                    case=renamer_case)
+                        with st.spinner(f"{len(selected_urls)} Dokumente herunterladen …"):
+                            outcomes=download_selected(
+                                doc_run,sorted(selected_urls),
+                                flat=layout=="Flacher Ordner",
+                                profile={"mode":renamer_mode,"code":renamer_code,
+                                         "case":renamer_case},
+                                destination_root=Path(global_config["download_directory"]))
+                        count_ok=sum("error" not in item for item in outcomes)
+                        st.success(f"{count_ok} von {len(outcomes)} Dokumenten gespeichert.")
+                        for item in outcomes:
+                            if "error" in item:
+                                st.error(f"{item['url']}: {item['error']}")
+                            else:
+                                st.caption(f"✔ {item['path']} · Datum: {item['date_source']} "
+                                           f"({item['date']}) · SHA-256 intern gespeichert")
+                        st.caption("Download-Verzeichnis: "
+                                   +str(global_config["download_directory"]))
+                    except ValueError as exc:
+                        st.error(str(exc))
 
 if current_page == "Sitemap":
     st.subheader("Sitemap / erfasste Seiten")
@@ -664,7 +686,7 @@ if current_page == "Sitemap":
             top_left.caption(f"{len(pages)} HTML-Seiten · inklusive geerbter Baseline")
             with top_right:
                 table_height = st.select_slider("Tabellenhöhe", options=[350, 550, 800, 1100, 1500],
-                                                value=800, format_func=lambda x: f"{x} px",
+                                                value=int(global_config["sitemap_height"]), format_func=lambda x: f"{x} px",
                                                 key="sitemap_height")
             table = [{"Pfad":urlsplit(url).path or "/",
                       "Titel":title,"URL":url,"Öffnen":url,
@@ -727,6 +749,44 @@ if current_page == "Job-Protokolle":
                         data=log_path(chosen).read_bytes(),
                         file_name=f"job_{chosen}.log",mime="text/plain",
                         key=f"log_dl_{chosen}")
+
+if current_page == "Einstellungen":
+    st.subheader("⚙️ Allgemeine Einstellungen")
+    st.caption("Gelten für alle Websites und bleiben in der lokalen Datenbank erhalten. "
+               "Spezifische Einstellungen wie Browsermodus und Herkunftskürzel "
+               "bleiben bei der einzelnen Website.")
+    with st.form("global_preferences"):
+        st.markdown("**Dokumentdownloads**")
+        download_dir=st.text_input("Download-Verzeichnis",
+            value=str(global_config["download_directory"]),
+            placeholder=r"D:\\Dokumente\\WebSnapshot")
+        default_flat=st.checkbox("Standardmässig alle Dateien im Website-Ordner speichern "
+                                 "(ohne Unterordner)",
+            value=bool(global_config["flat_downloads"]))
+        st.caption("Ein absoluter Pfad auf einem lokalen Laufwerk oder Netzlaufwerk ist "
+                   "erlaubt. Das Zielverzeichnis wird beim Speichern geprüft. "
+                   "Bereits heruntergeladene Dateien werden nicht verschoben.")
+        st.divider()
+        st.markdown("**Standardwerte für neue Erfassungen und Ansichten**")
+        default_limit=st.number_input("Standard-Besuchslimit",
+            min_value=10,max_value=20000,
+            value=int(global_config["visit_limit"]),step=100)
+        default_sitemap=st.select_slider("Standardhöhe der Sitemap-Tabelle",
+            options=list(VALID_HEIGHTS),value=int(global_config["sitemap_height"]),
+            format_func=lambda x:f"{x} px")
+        save_clicked=st.form_submit_button("💾 Einstellungen speichern",
+                                           type="primary")
+    if save_clicked:
+        try:
+            save_global(download_directory=download_dir,
+                        flat_downloads=default_flat,
+                        visit_limit=int(default_limit),
+                        sitemap_height=int(default_sitemap))
+            st.success("Globale Einstellungen gespeichert.")
+            st.rerun()
+        except ValueError as exc:
+            st.error(str(exc))
+
 
 if current_page == "Updates":
     with st.expander("Unterbrochene Job-Sperren freigeben"):
