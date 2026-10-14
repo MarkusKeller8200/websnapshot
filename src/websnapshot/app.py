@@ -38,7 +38,7 @@ div[data-testid="stTabs"] button {padding-top: .45rem; padding-bottom: .45rem;}
 </style>
 """, unsafe_allow_html=True)
 st.title("WebSnapshot")
-st.caption("Lokale Website-Inventarisierung · Version 0.6.3")
+st.caption("Lokale Website-Inventarisierung · Version 0.6.4")
 
 tab_overview, tab_sites, tab_snapshots, tab_map, tab_system = st.tabs(
     ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Sitemap", "Updates"])
