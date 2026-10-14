@@ -110,3 +110,44 @@ def test_partial_crawl_rejects_new_rules_to_avoid_inherited_pages(tmp_path,monke
             snapshot_kind="partial",
             config={"crawl_scope":"host","exclude_paths":[RULE],
                     "discovery_limit":1000,"page_timeout":3,"http_workers":1})
+
+
+
+def test_dedicated_save_roundtrips_and_preserves_capture_settings(tmp_path):
+    """Reproduce the reported bug: save a textarea and reload from SQLite."""
+    from websnapshot.settings import set_exclusions
+    with sqlite3.connect(database(tmp_path)) as db:
+        db.execute("INSERT INTO sites(id,url,created_at) VALUES (1,?,'now')",(HOME,))
+    set_settings(1,"browser",wait_selector="#main",wait_ms=2500,
+                 scope="host",data=tmp_path)
+    saved=set_exclusions(1,RULE+"\n"+OK+"\n"+RULE,tmp_path)
+    assert saved==[RULE,"/schule-hinterbirch/aktuelles/agenda/p-2003"]
+    loaded=get_site_settings(1,tmp_path)
+    assert loaded["exclude_paths"]==saved
+    assert loaded["mode"]=="browser"
+    assert loaded["wait_selector"]=="#main"
+    assert loaded["wait_ms"]==2500
+    assert loaded["crawl_scope"]=="host"
+    # The update survives a completely new SQLite connection.
+    with sqlite3.connect(database(tmp_path)) as db:
+        row=db.execute("SELECT exclude_paths FROM site_settings WHERE site_id=1").fetchone()
+    assert row is not None and __import__("json").loads(row[0])==saved
+    with pytest.raises(ValueError,match="Startadresse"):
+        set_exclusions(1,"/",tmp_path)
+    assert get_site_settings(1,tmp_path)["exclude_paths"]==saved
+    assert set_exclusions(1,"",tmp_path)==[]
+    assert get_site_settings(1,tmp_path)["exclude_paths"]==[]
+
+
+def test_ui_has_direct_exclusion_save_and_visible_database_readback():
+    from pathlib import Path
+    code=(Path(__file__).resolve().parents[1]/"src"/"websnapshot"/"app.py").read_text(
+        encoding="utf-8")
+    direct=code.index('st.button("💾 Ausschlussliste speichern"')
+    advanced=code.index('with st.expander("Erweiterte Browser-Einstellungen")')
+    assert direct<advanced
+    assert "on_click=save_site_exclusion_list" in code
+    assert 'st.session_state[f"exclude_paths_{site_id}"]' in code
+    assert "saved=set_exclusions(" in code
+    assert "Tatsächlich gespeicherte Ausschlussregeln:" in code
+    assert "noch nicht gespeicherte Änderungen" in code
