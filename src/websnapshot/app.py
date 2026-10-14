@@ -15,6 +15,7 @@ from websnapshot.inventory import dashboard, discover_and_snapshot, remove_site,
 from websnapshot.documents import list_documents, download_selected
 from websnapshot.document_metadata import probe_selected, list_references
 from websnapshot.document_properties import display_properties
+from websnapshot.date_format import format_datetime
 from websnapshot.jobs import launch, latest, running, recover_interrupted, request_cancel, snapshot_job
 from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
@@ -275,7 +276,7 @@ def job_controls(site_id, url, limit, snap_kind):
         last_activity=job.get("last_activity_at") or job.get("last_progress_at")
         if last_activity:
             idle=max(0,int((datetime.now(timezone.utc)-datetime.fromisoformat(last_activity)).total_seconds()))
-            st.caption(f"Letzte Aktivität: {datetime.fromisoformat(last_activity).strftime('%d.%m. %H:%M:%S')} UTC · vor {idle}s")
+            st.caption(f"Letzte Aktivität: {format_datetime(last_activity)} UTC · vor {idle}s")
             if active and idle >= 60:
                 st.warning(f"Seit {idle} Sekunden kein Fortschritt. Möglicherweise langsame Anfrage oder blockierter Job; dies ist noch kein sicherer Absturznachweis.")
         with st.expander("Technisches Job-Protokoll", expanded=False):
@@ -286,7 +287,7 @@ def job_controls(site_id, url, limit, snap_kind):
                     file_name=f"job_{job['id']}.log",mime="text/plain",
                     key=f"log_current_{site_id}_{job['id']}")
         col = st.columns(4)
-        col[0].metric("Gestartet (UTC)",start_time.strftime("%d.%m. %H:%M"))
+        col[0].metric("Gestartet (UTC)",format_datetime(start_time))
         col[1].metric("Laufzeit",f"{elapsed//60:02d}:{elapsed%60:02d}")
         col[2].metric("Seiten",info.get("pages",0))
         col[3].metric("Dokumente",info.get("documents",0))
@@ -391,7 +392,7 @@ def running_dashboard():
         info=json.loads(job["progress"] or "{}")
         start_time=datetime.fromisoformat(job["started_at"])
         elapsed=max(0,int((datetime.now(timezone.utc)-start_time).total_seconds()))
-        st.write(f"**{entry['url']}** · Job #{job['id']} · gestartet {start_time.strftime('%d.%m. %H:%M')} UTC · Laufzeit {elapsed//60:02d}:{elapsed%60:02d}")
+        st.write(f"**{entry['url']}** · Job #{job['id']} · gestartet {format_datetime(start_time)} UTC · Laufzeit {elapsed//60:02d}:{elapsed%60:02d}")
         if info.get("snapshot_kind")=="partial":
             percent=float(info.get("percent",0) or 0)
             st.progress(min(1,max(0,percent/100)),text=f"Partial: {percent:.1f}% · {info.get('changed',0)} zum Vorgänger · {info.get('changed_since_full',0)} zur Full-Baseline")
@@ -435,7 +436,7 @@ if current_page == "Dashboard":
                 "Dokumente": entry["documents"],
                 "Snapshots": entry["snapshots"],
                 "Ältester Snapshot": age_status + (f"{age} Tage" if age is not None else "Keiner"),
-                "Letzter Snapshot (UTC)": entry["newest"][:16].replace("T"," ") if entry["newest"] else "—",
+                "Letzter Snapshot (UTC)": format_datetime(entry["newest"]),
                 "Offene URLs": entry["pending"],
                 "Archivierter Text (MB)": round(entry["content_bytes"]/1048576,2)
             })
@@ -608,7 +609,7 @@ if current_page == "Snapshot-Verwaltung":
                 info=json.loads(job["progress"] or "{}") if job else {}
                 archive_rows.append({
                     "ID":row[0],"Typ":kind(row[0])[0],
-                    "Zeit (UTC)":row[1].replace("T"," ")[:19],
+                    "Zeit (UTC)":format_datetime(row[1]),
                     "Erfassung":"Abgeschlossen" if row[2]=="complete" else
                         "Unvollständig" if row[2]=="partial" else row[2],
                     "Laufzeit":f"{seconds//3600:02d}:{(seconds//60)%60:02d}:{seconds%60:02d}"
@@ -637,8 +638,8 @@ if current_page == "Snapshot-Verwaltung":
                     ended=datetime.fromisoformat(job["ended_at"]) if job["ended_at"] else None
                     elapsed=(ended-started).total_seconds() if ended else None
                     st.caption("Job #"+str(job["id"])+" · "+job["state"]+
-                        " · Start: "+started.strftime("%d.%m.%Y %H:%M:%S UTC")+
-                        (" · Ende: "+ended.strftime("%d.%m.%Y %H:%M:%S UTC") if ended else ""))
+                        " · Start: "+format_datetime(started)+" UTC"+
+                        (" · Ende: "+format_datetime(ended)+" UTC" if ended else ""))
                     if elapsed is not None:
                         elapsed=max(0,int(elapsed))
                         st.metric("Gesamtlaufzeit",
@@ -988,8 +989,8 @@ if current_page == "Dokumente":
                         {"Auswahl":d["url"] in selected_urls,
                          "Dokument":d["url"],"Titel":d.get("title") or "",
                          "Autor":d.get("author") or "",
-                         "Erstellt":d.get("created") or "",
-                         "Geändert":d.get("modified") or d.get("last_modified") or "",
+                         "Erstellt":format_datetime(d.get("created"),fallback=""),
+                         "Geändert":format_datetime(d.get("modified") or d.get("last_modified"),fallback=""),
                          "Status":d.get("property_status") or d["status"],
                          "Fundstellen":d.get("references",0),
                          "Grösse (HTTP)":d["length"] or "Unbekannt",
@@ -1050,7 +1051,7 @@ if current_page == "Dokumente":
                         http_rows=[
                             {"Eigenschaft":"HTTP ETag","Wert":details.get("etag") or "–"},
                             {"Eigenschaft":"HTTP Last-Modified",
-                             "Wert":details.get("last_modified") or "–"},
+                             "Wert":format_datetime(details.get("last_modified"))},
                             {"Eigenschaft":"HTTP Content-Length",
                              "Wert":details.get("length") or "–"},
                             {"Eigenschaft":"SHA-256 (intern)",
@@ -1124,7 +1125,7 @@ if current_page == "Dokumente":
                                 st.error(f"{item['url']}: {item['error']}")
                             else:
                                 st.caption(f"✔ {item['path']} · Datum: {item['date_source']} "
-                                           f"({item['date']}) · SHA-256 intern gespeichert")
+                                           f"({format_datetime(item.get('date_time') or item['date'])}) · SHA-256 intern gespeichert")
                         st.caption("Download-Verzeichnis: "
                                    +str(global_config["download_directory"]))
                     except ValueError as exc:
@@ -1292,7 +1293,7 @@ if current_page == "Job-Protokolle":
             st.write(f"**Letzter Job #{job['id']} · {job['state']}**")
             last_activity=job.get("last_activity_at") or job.get("last_progress_at")
             if last_activity:
-                st.caption("Letzte Aktivität (UTC): "+last_activity)
+                st.caption("Letzte Aktivität (UTC): "+format_datetime(last_activity))
                 if job["state"]=="running":
                     from datetime import timezone
                     idle=int((datetime.now(timezone.utc)-
