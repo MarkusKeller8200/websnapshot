@@ -31,6 +31,8 @@ from websnapshot.table_layout import column_width, streamlit_columns
 from websnapshot.sitemap_view import (tree_from_pages,visible_tree_rows,all_parent_ids,
     filtered_page_rows,export_csv,export_xlsx)
 from websnapshot.ui_diff import comparison_html
+from websnapshot.document_metadata import list_references, probe_selected
+from websnapshot.document_properties import display_properties
 from websnapshot.document_renamer import (get_profile, set_profile, RENAMED, ORIGINAL,
     CASE_MODES, filename_from_headers, build_filename, choose_date)
 
