@@ -14,7 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 from .core import DATA, MAX_BYTES, AGENT, check_public, database, extract, normalize_url, save
 from .documents import inventory_documents
-from .versions import latest_run, effective_pages, save_partial, mark_full
+from .versions import latest_run, effective_pages, save_partial, mark_full, kind
 from .settings import get as get_capture
 from hashlib import sha256
 
@@ -59,7 +59,9 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 snapshot_kind=snapshot_kind, total_urls=len(baseline) if parent_id else None,
                 changed=sum(1 for u,(_,content) in pages.items() if u not in baseline or
                     sha256(content.encode()).hexdigest()!=baseline[u][2]) if parent_id else 0,
-                baseline_id=parent_id)
+                baseline_id=parent_id, full_baseline_id=full_id,
+                changed_since_full=sum(1 for u,(_,content) in pages.items() if
+                    u not in full_baseline or sha256(content.encode()).hexdigest()!=full_baseline[u][2]) if parent_id else 0)
             if parent_id:
                 current['percent']=round(100*min(len(visited),len(baseline))/max(len(baseline),1),1)
             current.update(extra)
@@ -86,6 +88,11 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     if snapshot_kind == 'partial' and parent_id is None:
         raise ValueError('Für Partial-Snapshots wird ein Baseline-Snapshot benötigt')
     baseline = effective_pages(parent_id,data) if parent_id else {}
+    full_id = parent_id
+    if parent_id:
+        while kind(full_id,data)[1] is not None:
+            full_id=kind(full_id,data)[1]
+    full_baseline=effective_pages(full_id,data) if full_id else {}
     queue = deque(baseline.keys()) if parent_id else deque([start])
     queued = set(queue) if parent_id else {start}
     visited = set()
@@ -203,7 +210,9 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                    (run_id, len(found), len(docs), len(visited), skipped,
                     remaining, len(sitemap_seen)))
     emit(phase="Fertig", changed=changed, percent=100 if parent_id and remaining == 0 else round(100*len(visited)/max(len(baseline),1),1) if parent_id else None)
-    return run_id, {"discovered":len(found), "pages":len(pages), "documents":len(docs),
+    return run_id, {"snapshot_kind":snapshot_kind, "full_baseline_id":full_id,
+                    "changed_since_full":sum(1 for u,(_,content) in pages.items() if u not in full_baseline or sha256(content.encode()).hexdigest()!=full_baseline[u][2]) if parent_id else 0,
+                    "discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
                     "sitemaps":len(sitemap_seen), "changed":changed, "errors":errors}
 
