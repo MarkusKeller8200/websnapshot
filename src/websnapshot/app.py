@@ -12,7 +12,8 @@ import streamlit as st
 from websnapshot.core import DATA, add_site, sites, runs, compare, report
 from websnapshot.inventory import dashboard, discover_and_snapshot, remove_site, storage_bytes
 from websnapshot.documents import list_documents, download_selected
-from websnapshot.jobs import launch, latest, running, recover_interrupted
+from websnapshot.jobs import launch, latest, running, recover_interrupted, request_cancel
+from websnapshot.diagnostics import summary
 from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
 from websnapshot.versions import kind, effective_pages, remove_snapshot
 from urllib.parse import urlsplit
@@ -53,6 +54,9 @@ def job_controls(site_id, url, limit, snap_kind):
             st.caption(f"{info.get('discovered',0)} URLs entdeckt · {info.get('visited',0)} besucht · Phase: {info.get('phase','Wartet')}")
         if active:
             st.info("Für diese Website läuft bereits ein Job.")
+            if st.button("Job kontrolliert abbrechen",key=f"cancel_{site_id}"):
+                request_cancel(site_id)
+                st.warning("Abbruch angefordert; die aktuell laufende Anfrage wird noch beendet.")
         elif job["state"] in ("failed","interrupted"):
             st.error(job["message"])
         else:
@@ -190,6 +194,27 @@ with tab_snapshots:
         st.dataframe([{"ID":r[0],"Typ":kind(r[0])[0],"Zeitpunkt (UTC)":r[1],"Status":r[2],
                        "Fehler":len(json.loads(r[3]))} for r in history],
                      hide_index=True, use_container_width=True)
+        if history:
+            st.subheader("Crawl-Diagnose und Qualität")
+            diagnostic_id=st.selectbox("Diagnose zu Snapshot", [r[0] for r in history], key="diagnostic_run")
+            diag=summary(diagnostic_id)
+            q=diag["quality"]
+            if q:
+                st.write(f"**Qualitätsstatus:** {q[10]}")
+                a,bx,cc,dd=st.columns(4)
+                a.metric("Bekannte URLs",q[1])
+                bx.metric("Besucht",q[2])
+                cc.metric("Archiviert",q[3])
+                dd.metric("Offen",q[5])
+                if q[9]:
+                    st.warning("Erfassungsgrenzen erreicht; Snapshot ist unvollständig.")
+                st.caption(f"Duplikate mit gleichem HTML-Text: {q[8]} · Fehler: {q[7]}")
+            with st.expander("URL-Herkunft, Ausschlüsse und auffällige Muster"):
+                st.write("Quellen",diag["sources"])
+                st.write("Zustände",diag["statuses"])
+                st.write("Ausschlussgründe",diag["reasons"])
+                st.dataframe([{"Pfad":p,"Varianten":n} for p,n in diag["paths"]],hide_index=True)
+                st.dataframe([{"Parameter":p,"Vorkommen":n} for p,n in diag["parameters"]],hide_index=True)
         if history:
             st.subheader("Snapshot entfernen")
             remove_id = st.selectbox("Snapshot", [r[0] for r in history],key="remove_snapshot")
