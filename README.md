@@ -1,6 +1,6 @@
 # WebSnapshot
 
-Local, manually triggered website snapshots, content comparison and HTML change reports.
+Lokale Anwendung für manuell gestartete Website-Snapshots, Versionsvergleiche und HTML-Änderungsberichte.
 
 ## Was macht WebSnapshot?
 
@@ -48,29 +48,79 @@ Snapshots werden im Verzeichnis `.data/` in der Datei `websnapshot.sqlite3` gesp
 
 ### Geplante Weiterentwicklung
 
-Priorität haben die Sitemap-Auswertung und ein transparenter Crawl-Status, anschliessend die Erkennung geänderter PDF-Dokumente und KI-gestützte Änderungsberichte. Weitere Ideen sind PDF-Export und Integrationen in Confluence, Jira sowie Microsoft 365. Siehe [technisches Konzept](docs/KONZEPT.md).
+Priorität haben eine möglichst vollständige Inventarisierung per Sitemap, rekursiver Linksuche und transparentem Crawl-Status, anschliessend die Erkennung geänderter PDF-Dokumente und KI-gestützte Änderungsberichte. Weitere Ideen sind PDF-Export und Integrationen in Confluence, Jira sowie Microsoft 365. Siehe [technisches Konzept](docs/KONZEPT.md).
 
-## Local installation (Windows/macOS)
+## Installation und Start
 
-Requires Python 3.11+.
+### Voraussetzungen
+
+- Windows 10/11 oder macOS
+- **Python 3.13 empfohlen** (Python 3.15 kann wegen der Streamlit-/PyArrow-Abhängigkeiten zu Installationsfehlern führen)
+- Git zum Herunterladen des Projekts
+- Internetverbindung zum Installieren der Python-Pakete und späteren Abrufen der Websites
+- Für die übliche Installation mit passenden vorkompilierten Paketen sind keine C++-Build-Tools vorgesehen. Wenn `pip` Pakete aus Quellcode baut, zuerst Python-Version und Paketkompatibilität prüfen.
+
+### Windows (Eingabeaufforderung / CMD)
+
+Python 3.13 gegebenenfalls installieren:
+
+```cmd
+winget install --id Python.Python.3.13 -e
+```
+
+Eine neue Eingabeaufforderung öffnen, dann das Projekt herunterladen und die virtuelle Python-Umgebung anlegen:
+
+```cmd
+git clone https://github.com/MarkusKeller8200/websnapshot.git
+cd websnapshot
+py -3.13 -m venv .venv313
+.venv313\Scripts\activate.bat
+python --version
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+Die Versionskontrolle muss `Python 3.13.x` anzeigen. Die Installation erfolgt nur einmalig. **Start per Doppelklick:** Anschliessend `WebSnapshot.bat` im Projektordner ausführen. Das Skript verwendet direkt `.venv313`, auch wenn systemweit Python 3.15 eingestellt ist.
+
+Alternativ in CMD:
+
+```cmd
+.venv313\Scripts\python.exe -m streamlit run src\websnapshot\app.py
+```
+
+Für PowerShell lautet der Aktivierungsbefehl `.\.venv313\Scripts\Activate.ps1`. Eine Aktivierung ist für den Doppelklick-Start nicht notwendig.
+
+### macOS
+
+Python 3.13 sowie Git installieren, falls sie noch nicht vorhanden sind. Die folgenden Befehle im Terminal ausführen:
 
 ```bash
 git clone https://github.com/MarkusKeller8200/websnapshot.git
 cd websnapshot
-python -m venv .venv
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+python -m streamlit run src/websnapshot/app.py
 ```
 
-Activate the environment: Windows PowerShell: `.venv\Scripts\Activate.ps1`; macOS: `source .venv/bin/activate`.
+Falls der Befehl `python3.13` nicht verfügbar ist, muss zuerst die Python-3.13-Installation beziehungsweise deren PATH geprüft werden.
 
-```bash
-pip install -e '.[dev]'
-streamlit run src/websnapshot/app.py
+### WebSnapshot verwenden
+
+Die Anwendung öffnet normalerweise automatisch den Browser und ist lokal unter **http://localhost:8501** erreichbar. Eine öffentliche Website hinzufügen, Seitenzahl und Linktiefe konfigurieren und auf «Neuen Snapshot erstellen» klicken. Ab dem zweiten Snapshot lassen sich zwei Versionen vergleichen und die Unterschiede als HTML-Bericht herunterladen.
+
+**Hinweis zur Vollständigkeit:** In Version 0.1 werden nur verlinkte HTML-Seiten innerhalb desselben Hosts und der eingestellten Grenzen erfasst. Es wird noch keine Sitemap eingelesen. Die aktuelle Erfassung ist **kein Nachweis einer vollständig erfassten Website**. Weitere Informationen stehen im [Konzept](docs/KONZEPT.md).
+
+Die Snapshots werden lokal in `.data/` gespeichert. Dieser Ordner gehört nicht ins Git-Repository. Version 0.1 verarbeitet noch keine PDF-Dokumente, keine dynamischen JavaScript-Seiten und keine KI-Auswertung. Die Website-Regeln (insbesondere robots.txt und Nutzungsbedingungen) sind zu respektieren.
+
+### Aktualisieren
+
+Im Projektordner ausführen:
+
+```cmd
+git pull
+.venv313\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-Open http://localhost:8501. Add a public URL, adjust crawl depth and page count, run a manual snapshot, then select two snapshots to generate a report.
-
-Snapshots are stored locally in `.data/` and must not be committed.
-
-**V0.1 limitations:** Static HTML only; no PDF extraction, dynamic JS rendering, AI or scheduling. Missing pages are NOT confirmed deletions. Respect robots.txt, copyright and website usage terms. This is for trusted local use only.
-
-See [Konzept](docs/KONZEPT.md).
+Auf macOS stattdessen `.venv/bin/python -m pip install -e ".[dev]"` ausführen. Die lokalen Snapshot-Daten bleiben durch `git pull` unangetastet.
