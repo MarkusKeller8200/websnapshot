@@ -43,9 +43,38 @@ st.markdown("""
 [data-testid="stSidebar"] {width: 20rem !important; min-width: 20rem !important;}
 [data-testid="stVerticalBlock"] {gap: .65rem;}
 [data-testid="stMetricValue"] {font-size: 1.5rem;}
-/* Navigation: button labels aligned consistently with section labels. */
-[data-testid="stSidebar"] [data-testid="stButton"] button {justify-content: flex-start !important; text-align: left !important;}
-[data-testid="stSidebar"] [data-testid="stButton"] button p {text-align: left !important; width:100%;}
+/* Streamlit nests labels in a Markdown wrapper. Align the button AND its
+   inner wrapper; otherwise full-width buttons still centre icons and text. */
+[data-testid="stSidebar"] [data-testid="stButton"] {
+    width: 100% !important;
+}
+[data-testid="stSidebar"] [data-testid="stButton"] > button,
+[data-testid="stSidebar"] [data-testid="stButton"] button[data-testid^="stBaseButton"] {
+    width: 100% !important;
+    display: flex !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    text-align: left !important;
+    padding-left: 0.85rem !important;
+    padding-right: 0.65rem !important;
+}
+[data-testid="stSidebar"] [data-testid="stButton"] button [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] [data-testid="stButton"] button > div,
+[data-testid="stSidebar"] [data-testid="stButton"] button > span {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    width: 100% !important;
+    text-align: left !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+[data-testid="stSidebar"] [data-testid="stButton"] button p,
+[data-testid="stSidebar"] [data-testid="stButton"] button span {
+    text-align: left !important;
+    margin: 0 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 st.markdown("## 📸 WebSnapshot")
