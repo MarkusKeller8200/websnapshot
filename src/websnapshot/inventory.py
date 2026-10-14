@@ -37,6 +37,8 @@ def _fetch(session: requests.Session, url: str, max_bytes: int = MAX_BYTES) -> t
             raise ValueError("Weiterleitung nicht verfolgt")
         res.raise_for_status()
         kind = res.headers.get("Content-Type", "").lower()
+        if "text/html" not in kind and "xml" not in kind and "text/plain" not in kind:
+            return b"",kind
         content = bytearray()
         for chunk in res.iter_content(32768):
             content.extend(chunk)
