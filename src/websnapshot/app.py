@@ -1194,7 +1194,7 @@ if current_page == "Sitemap":
                     expanded=all_parent_ids(tree)
                     st.caption("Beim Suchen werden die Verzeichnisse mit Treffern "
                                "automatisch aufgeklappt.")
-                tree_a,tree_b=st.columns(2)
+                tree_a,tree_b,tree_c=st.columns(3)
                 with tree_a:
                     if st.button("📂 Erste Ebene aufklappen",
                                  key=f"tree_first_{site_id}_{selected_run}",
@@ -1205,6 +1205,15 @@ if current_page == "Sitemap":
                         st.session_state[version_key]=st.session_state.get(version_key,0)+1
                         st.rerun()
                 with tree_b:
+                    if st.button("🗂️ Alle Ebenen",
+                                 key=f"tree_all_{site_id}_{selected_run}",
+                                 use_container_width=True,disabled=bool(search.strip()),
+                                 help="Alle Verzeichnisebenen aufklappen; maximal 2'500 Zeilen gleichzeitig anzeigen"):
+                        expanded=all_parent_ids(tree)
+                        st.session_state[expanded_key]=sorted(expanded)
+                        st.session_state[version_key]=st.session_state.get(version_key,0)+1
+                        st.rerun()
+                with tree_c:
                     if st.button("📁 Alle Verzeichnisse schliessen",
                                  key=f"tree_close_{site_id}_{selected_run}",
                                  use_container_width=True,disabled=bool(search.strip())):
