@@ -202,7 +202,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                 continue
             body, kind = _fetch(session, url)
             if "text/html" not in kind:
-                if ("pdf" in kind or "msword" in kind or "wordprocessingml" in kind) and urlsplit(url).path.lower().endswith((".pdf", ".doc", ".docx")):
+                if "pdf" in kind or "msword" in kind or "wordprocessingml" in kind:
                     docs.add(url)
                     url_records[url]=(url_records[url][0],"document","")
                 else:
