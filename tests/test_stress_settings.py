@@ -18,11 +18,13 @@ def test_10_workers_and_100000_visited_pages_configurable(tmp_path):
     assert defaults(tmp_path)["http_workers"]==3
 
 
-def test_streamlit_columns_auto_size_except_final():
+def test_streamlit_columns_auto_size_including_final():
     rows=[{"Pfad":"/schule-hinterbirch","Titel":"Aktuelles",
            "Zeichen":101,"URL":"https://example.org/a"}]
     config=streamlit_columns(rows)
     assert "Pfad" in config
     assert "Titel" in config
     assert "Zeichen" in config
-    assert "URL" not in config
+    assert "URL" in config
+    assert config["URL"]["width"] >= 175
+    assert config["URL"]["width"] <= 580
