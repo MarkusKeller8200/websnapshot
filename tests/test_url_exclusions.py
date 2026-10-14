@@ -120,7 +120,7 @@ def test_dedicated_save_roundtrips_and_preserves_capture_settings(tmp_path):
         db.execute("INSERT INTO sites(id,url,created_at) VALUES (1,?,'now')",(HOME,))
     set_settings(1,"browser",wait_selector="#main",wait_ms=2500,
                  scope="host",data=tmp_path)
-    saved=set_exclusions(1,RULE+"\n"+OK+"\n"+RULE,tmp_path)
+    saved=set_exclusions(1,RULE+"\n"+OK.replace(HOME,"/")+"\n"+RULE,tmp_path)
     assert saved==[RULE,"/schule-hinterbirch/aktuelles/agenda/p-2003"]
     loaded=get_site_settings(1,tmp_path)
     assert loaded["exclude_paths"]==saved
