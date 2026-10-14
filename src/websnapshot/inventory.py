@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 import requests
 from bs4 import BeautifulSoup
 from .core import DATA, MAX_BYTES, AGENT, check_public, database, extract, normalize_url, save
-from .documents import inventory_documents
+from .documents import inventory_documents, previous_document_metadata, status_summary
 from .document_metadata import save_references
 from .doclinks import related_document
 from .versions import latest_run, effective_pages, save_partial, mark_full, kind as snapshot_kind_for_run
@@ -184,6 +184,14 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
             raise ValueError("Ausschlussliste geändert: Bitte zuerst einen neuen "
                              "Full-Snapshot erstellen, damit keine ausgeschlossenen "
                              "Seiten aus dem alten Snapshot geerbt werden.")
+    # Reuse documented URLs along the Full/Partial parent chain; earlier
+    # versions omitted document inventory rows in their partial snapshots.
+    previous_docs=previous_document_metadata(parent_id,data) if parent_id else {}
+    carried_docs={
+        url for url in previous_docs
+        if not excluded_by(url,exclude_paths)
+        and (urlsplit(url).netloc==host or related_document(url,start))
+    }
     baseline = effective_pages(parent_id,data) if parent_id else {}
     full_id = parent_id
     if parent_id:
@@ -204,11 +212,13 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     sitemap_queue = deque() if parent_id else deque([origin + '/sitemap.xml'])
     sitemap_seen = set()
     errors = []
-    docs = set()
+    docs = set(carried_docs)
     document_references = {}
     link_audit = LinkExclusionJournal()
-    found = set(queued)
+    found = set(queued) | docs
     url_records = {u: ('baseline' if parent_id else 'start','queued','') for u in queued}
+    url_records.update({u:("baseline-document","document","Bekannte Dokument-URL")
+                        for u in docs})
     path_counts = {}
     for u in queued:
         key=path_key(u)
@@ -414,6 +424,12 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                         browser_static_pages+=1
                     else:
                         browser_unknown_pages+=1
+                    if parent_id:
+                        # Revisit known documents and collect newly linked files
+                        # without expanding the partial crawl to new HTML pages.
+                        for link in links:
+                            if is_document(link):
+                                enqueue(link,"browser-link",url)
                     if not parent_id:
                         discovery_tick=perf_counter()
                         links_allowed=[link for link in links if
@@ -469,6 +485,12 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     register_change(url,content)
                     static_pages+=1
                     url_records[url]=(url_records[url][0],"archived","")
+                    if parent_id:
+                        # Revisit known documents and collect newly linked files
+                        # without expanding the partial crawl to new HTML pages.
+                        for link in links:
+                            if is_document(link):
+                                enqueue(link,"html-link",url)
                     if not parent_id:
                         discovery_tick=perf_counter()
                         links_allowed=[link for link in links if
@@ -514,7 +536,18 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     timings.observe("snapshot_save",perf_counter()-save_tick,"SQLite")
     emit(phase="Dokument-Metadaten prüfen")
     metadata_started=perf_counter()
-    inventory_documents(run_id, site_id, docs, session, data, progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen", **kw))
+    def document_head_allowed(url):
+        return (not robots_loaded or urlsplit(url).netloc!=host
+                or robot.can_fetch(AGENT,url))
+    if parent_id:
+        inventory_documents(run_id,site_id,docs,session,data,
+            progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen",**kw),
+            parent_id=parent_id,allowed=document_head_allowed)
+    else:
+        inventory_documents(run_id,site_id,docs,session,data,
+            progress=lambda **kw: emit(phase="Dokument-Metadaten prüfen",**kw),
+            allowed=document_head_allowed)
+    doc_statuses=status_summary(run_id,data)
     timings.observe("document_metadata",perf_counter()-metadata_started,"HEAD")
     save_references(run_id,document_references,data)
     emit(phase="Diagnose speichern")
@@ -559,6 +592,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     "discovered_sources":dict(discovered_sources),
                     "changed_since_full":changed_from_full,
                     "discovered":len(found), "pages":len(pages), "documents":len(docs),
+                     "document_statuses":doc_statuses,"documents_checked":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
                     "excluded_limits":dict(limit_exclusions), "limit_warnings":limit_warnings(),
                     "sitemaps":len(sitemap_seen), "changed":changed, "errors":errors,
