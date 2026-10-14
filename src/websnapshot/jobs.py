@@ -74,7 +74,7 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
                 run_id=?, message=?, progress=? WHERE id=?""",
                 (datetime.now(timezone.utc).isoformat(),run_id,
                  f"{result['pages']} Seiten, {result['documents']} Dokumente",
-                 json.dumps({k:v for k,v in result.items() if k!='errors'}),job_id))
+                 json.dumps({**{k:v for k,v in result.items() if k!='errors'}, "snapshot_kind":snapshot_kind, "percent":100 if snapshot_kind=="partial" and not result["pending"] else None}),job_id))
             db.commit()
     except Exception as exc:
         with _connect(data) as db:
