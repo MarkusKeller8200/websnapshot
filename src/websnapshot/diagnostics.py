@@ -10,7 +10,7 @@ TRACKING = {"utm_source","utm_medium","utm_campaign","utm_content","utm_term",
             "gclid","fbclid","msclkid","_ga"}
 MAX_DISCOVERED = 200000
 MAX_PER_PATH = 200
-MAX_PER_PAGE = 300
+MAX_PER_PAGE = 1000
 
 def canonical(url: str) -> str:
     url=normalize_url(url)
