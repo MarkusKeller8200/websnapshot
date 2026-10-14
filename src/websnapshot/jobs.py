@@ -56,6 +56,7 @@ def launch(site_id: int, url: str, limit: int, data: Path = DATA, snapshot_kind:
            "discovery_limit":crawl_config["discovery_limit"],
            "page_timeout":crawl_config["page_timeout"],
            "http_workers":crawl_config["http_workers"],
+           "links_per_page":crawl_config["links_per_page"],
            "crawl_scope":capture["crawl_scope"]}
     with _lock, _connect(data) as db:
         existing = db.execute("""SELECT id FROM jobs WHERE site_id=?
@@ -110,7 +111,7 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
         with _connect(data) as db:
             row=db.execute("SELECT progress FROM jobs WHERE id=?",(job_id,)).fetchone()
             submitted=json.loads(row[0] or "{}")
-        config={k:submitted[k] for k in ("discovery_limit","page_timeout","http_workers","crawl_scope")
+        config={k:submitted[k] for k in ("discovery_limit","page_timeout","http_workers","links_per_page","crawl_scope")
                 if k in submitted}
         run_id, result = discover_and_snapshot(
             site_id,url,limit,data,progress=progress,snapshot_kind=snapshot_kind,
