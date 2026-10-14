@@ -338,9 +338,14 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                 else:
                     # Apply scope, exclude and robots filters immediately.
                     # Do not materialise a second potentially huge sitemap list.
-                    enqueue(link,"sitemap",sm)
                     if len(found)>=discovery_limit:
-                        break
+                        # Keep count of entries we could not consider; never
+                        # queue or allocate storage for them.
+                        limit_exclusions["discovery"]+=1
+                        truncated=True
+                        skipped+=1
+                        continue
+                    enqueue(link,"sitemap",sm)
         except (requests.RequestException, ValueError, ET.ParseError, OSError) as exc:
             errors.append("Sitemap nicht lesbar: " + sm)
             if isinstance(exc,requests.Timeout):
