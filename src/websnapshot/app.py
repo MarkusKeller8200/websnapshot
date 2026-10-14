@@ -1054,15 +1054,15 @@ if current_page == "Dokumente":
                                    f"Dateimetadaten: {details.get('property_status') or 'Noch nicht geprüft'}")
                         if ref_rows:
                             # All columns, including the source-type column, are fitted.
-                        ref_table=[{"Fundstelle":r["url"],"Quelle":r["type"]}
-                                   for r in ref_rows]
-                        st.dataframe(ref_table,width="stretch",hide_index=True,
-                            column_config={
-                                "Fundstelle":st.column_config.LinkColumn("Gefunden auf",
-                                    width=column_width(ref_table,"Fundstelle",
-                                                       header="Gefunden auf")),
-                                "Quelle":st.column_config.TextColumn("Quelle",
-                                    width=column_width(ref_table,"Quelle"))})
+                            ref_table=[{"Fundstelle":r["url"],"Quelle":r["type"]}
+                                       for r in ref_rows]
+                            st.dataframe(ref_table,width="stretch",hide_index=True,
+                                column_config={
+                                    "Fundstelle":st.column_config.LinkColumn("Gefunden auf",
+                                        width=column_width(ref_table,"Fundstelle",
+                                                           header="Gefunden auf")),
+                                    "Quelle":st.column_config.TextColumn("Quelle",
+                                        width=column_width(ref_table,"Quelle"))})
                         else:
                             st.caption("Keine Quellseiten gespeichert – bei älteren "
                                        "Snapshots werden Fundstellen nicht nachträglich ermittelt.")
