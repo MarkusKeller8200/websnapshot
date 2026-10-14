@@ -168,7 +168,9 @@ def extract_properties(path: Path, extension: str) -> dict:
             return pdf_properties(path)
         if extension in (".txt",".csv"):
             return text_properties(path,extension)
-    except (BadZipFile,ET.ParseError,ValueError,TypeError,OSError,ImportError) as exc:
+    except Exception as exc:
+        # Corrupt, encrypted or otherwise unsupported documents must not
+        # crash a running metadata inspection.
         raise ValueError(f"Dokumenteigenschaften nicht lesbar: {exc}") from exc
     raise ValueError("Nicht unterstütztes Dokumentformat")
 
