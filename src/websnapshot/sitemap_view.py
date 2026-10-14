@@ -10,6 +10,7 @@ from io import BytesIO, StringIO
 from urllib.parse import unquote, urlsplit
 from xml.sax.saxutils import escape
 from zipfile import ZipFile, ZIP_DEFLATED
+from .table_layout import column_width
 
 EXPORT_COLUMNS = ("Pfad", "Titel", "Zeichen", "URL")
 TREE_COLUMNS = ("Aufklappen", "Ebene / Pfad", "Seiten", "Titel", "Zeichen", "Öffnen", "URL")
@@ -139,6 +140,10 @@ def export_xlsx(pages: list[dict]) -> bytes:
     """
     output=BytesIO()
     last=len(pages)+1
+    # Excel column widths use character units. Fit the exported content
+    # using the same bounded sample as the interactive Sitemap tables.
+    fit_px=[column_width(pages,key,cap=580) for key in EXPORT_COLUMNS]
+    fit_chars=[round(max(12,min(84,(size-16)/7)),1) for size in fit_px]
     with ZipFile(output,"w",compression=ZIP_DEFLATED,compresslevel=6) as z:
         z.writestr("[Content_Types].xml",
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -183,10 +188,11 @@ def export_xlsx(pages: list[dict]) -> bytes:
             put('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
                 '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
                 '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
-                '<cols><col min="1" max="1" width="45" customWidth="1"/>'
-                '<col min="2" max="2" width="48" customWidth="1"/>'
-                '<col min="3" max="3" width="15" customWidth="1"/>'
-                '<col min="4" max="4" width="73" customWidth="1"/></cols><sheetData>')
+                '<cols>'+''.join(
+                    f'<col min="{idx}" max="{idx}" width="{width}" '
+                    f'customWidth="1" bestFit="1"/>'
+                    for idx,width in enumerate(fit_chars,1)
+                )+'</cols><sheetData>')
             columns="ABCD"
             put('<row r="1" ht="26" customHeight="1">')
             for idx,label in enumerate(EXPORT_COLUMNS):
