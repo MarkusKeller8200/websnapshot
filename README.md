@@ -161,3 +161,8 @@ Ein neuer Tab «Sitemap» zeigt die **im ausgewählten Snapshot tatsächlich arc
 
 ### Dynamische Websites
 Viele moderne Websites rendern Inhalte erst im Browser über JavaScript. Die bisherige `requests`-Erfassung erfasst nur ausgeliefertes HTML; nachgeladene Inhalte können fehlen. Vorgesehen ist ein **optionaler Playwright-Modus pro Website**: echtes Chromium mit JavaScript, gezielte Wartebedingungen auf relevante Seitenelemente, Begrenzungen für Laufzeit/Seitenzahl, Wiederverwendung einer Browser-Sitzung und getrennte Erkennung dynamisch verlinkter URLs. Er bleibt vorerst **geplant und ist in 0.4.0 noch nicht implementiert**. Login- und geschützte Bereiche erfordern zusätzliche Sicherheits- und Berechtigungskonzepte.
+
+### Reihenfolge der nächsten Versionen
+
+- **0.5.0 – Browsermodus vorbereiten:** Website-spezifische Wahl des Erfassungsmodus (statisch / Browser / später automatisch), Benutzeroberfläche und Konfiguration. Der Browsermodus ist bis zur Integration einer Browser-Engine noch nicht ausführbar; es erfolgt **kein stillschweigender Rückfall** auf statische Erfassung.
+- **0.6.0 – Playwright integrieren:** Browsermodus mit Chromium tatsächlich ausführen, JavaScript-Inhalte und dynamisch erzeugte Links erfassen, Fortschritt/Fehlerstatus in bestehende Hintergrund-Jobs integrieren. Erst danach automatisches Umschalten prüfen.
