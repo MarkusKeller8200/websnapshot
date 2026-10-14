@@ -395,7 +395,13 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                         scope_excluded+=sum(1 for link in links if
                             urlsplit(link).netloc==host and
                             not eligible_link(link,start,effective_mode))
-                        links=links_allowed
+                        links=[]
+                        for link in links_allowed:
+                            excluded_rule=excluded_by(link,exclude_paths)
+                            if excluded_rule:
+                                excluded_stats.record(excluded_rule,link)
+                            else:
+                                links.append(link)
                         for link in links[:links_per_page]:
                             enqueue(link,"browser-link",url)
                         if len(links)>links_per_page:
@@ -444,7 +450,13 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                         scope_excluded+=sum(1 for link in links if
                             urlsplit(link).netloc==host and
                             not eligible_link(link,start,effective_mode))
-                        links=links_allowed
+                        links=[]
+                        for link in links_allowed:
+                            excluded_rule=excluded_by(link,exclude_paths)
+                            if excluded_rule:
+                                excluded_stats.record(excluded_rule,link)
+                            else:
+                                links.append(link)
                         for link in links[:links_per_page]:
                             enqueue(link,"html-link",url)
                         if len(links)>links_per_page:
