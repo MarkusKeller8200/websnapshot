@@ -14,7 +14,10 @@ def defaults(data: Path = DATA) -> dict:
     return {
         "download_directory": str((data / "downloads").resolve()),
         "flat_downloads": False,
-        "visit_limit": 1000,
+        "visit_limit": 2000,
+        "discovery_limit": 200000,
+        "page_timeout": 3.0,
+        "http_workers": 3,
         "sitemap_height": DEFAULT_SITEMAP_HEIGHT,
     }
 
@@ -59,18 +62,29 @@ def validate_download_directory(value: str) -> Path:
 
 
 def save(*, download_directory: str, flat_downloads: bool,
-         visit_limit: int, sitemap_height: int, data: Path = DATA) -> dict:
+         visit_limit: int, sitemap_height: int, data: Path = DATA,
+         discovery_limit: int = 200000, page_timeout: float = 3.0,
+         http_workers: int = 3) -> dict:
     location = validate_download_directory(download_directory)
     if type(flat_downloads) is not bool:
         raise ValueError("Ungültige Auswahl für die Ordnerstruktur.")
     if type(visit_limit) is not int or not 10 <= visit_limit <= 20000:
         raise ValueError("URL-Besuchslimit muss zwischen 10 und 20'000 liegen.")
+    if type(discovery_limit) is not int or not 1000 <= discovery_limit <= 1_000_000:
+        raise ValueError("Discovery-Limit muss zwischen 1'000 und 1'000'000 liegen.")
+    if type(page_timeout) not in (int,float) or not 1 <= page_timeout <= 60:
+        raise ValueError("Seiten-Timeout muss zwischen 1 und 60 Sekunden liegen.")
+    if type(http_workers) is not int or not 1 <= http_workers <= 4:
+        raise ValueError("Parallelität muss zwischen 1 und 4 gleichzeitigen HTTP-Anfragen liegen.")
     if sitemap_height not in VALID_HEIGHTS:
         raise ValueError("Ungültige Höhe für die Sitemap-Tabelle.")
     values = {
         "download_directory": str(location),
         "flat_downloads": flat_downloads,
         "visit_limit": visit_limit,
+        "discovery_limit": discovery_limit,
+        "page_timeout": float(page_timeout),
+        "http_workers": http_workers,
         "sitemap_height": sitemap_height,
     }
     init(data)
