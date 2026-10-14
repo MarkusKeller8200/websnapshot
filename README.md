@@ -285,3 +285,11 @@ In der Sitemap-Baumansicht öffnet der neue Button **«🗂️ Alle Ebenen»** a
 Alle Tabellen in Dashboard, Snapshot-Verwaltung, Crawl-Diagnose, Dokumentenverwaltung und Sitemap passen **jede Spaltenbreite beim Anzeigen an den Inhalt an**, neu ausdrücklich auch die letzte Spalte. Dafür werden bei grossen Datenmengen bis zu 400 repräsentative Datensätze genutzt. Lange URLs werden auf eine bedienbare Breite begrenzt, statt andere Spalten zu verdrängen.
 
 Auch der Sitemap-Export als **Excel (.xlsx)** verwendet inhaltsabhängig berechnete Spaltenbreiten. CSV-Dateien unterstützen keine gespeicherten Spaltenbreiten. Details: [Release v0.6.16](docs/releases/v0.6.16.md) und [CHANGELOG](CHANGELOG.md).
+
+## WebSnapshot v0.6.17 – Partial-Snapshots wieder möglich
+
+Ein Namenskonflikt zwischen dem HTTP-`Content-Type` und der Funktion zur Ermittlung des Snapshot-Typs konnte beim Erstellen von Partial-Snapshots den Fehler `cannot access local variable 'kind' where it is not associated with a value` auslösen. Die beiden Namen sind nun getrennt. Ein Integrationstest prüft eine vollständige Folge **Full → Partial → Partial** einschliesslich Delta-Vererbung und Änderungszählung.
+
+Bereits vorhandene Snapshots und Einstellungen bleiben unverändert. Nach dem Update kannst du den zuvor fehlgeschlagenen Partial-Snapshot erneut starten.
+
+Details: [Release v0.6.17](docs/releases/v0.6.17.md) und [CHANGELOG](CHANGELOG.md).
