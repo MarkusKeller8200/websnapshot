@@ -70,6 +70,31 @@ def set_settings(site_id: int, mode: str, wait_selector: str = "",
              json.dumps(rules,ensure_ascii=False)))
 
 
+def set_exclusions(site_id: int, paths: list[str] | str,
+                   data: Path = DATA) -> list[str]:
+    """Save only the exclusion paths, preserving capture mode and scope.
+
+    Always commit and verify from a fresh connection before confirming success.
+    This is the dedicated operation used by the exclusion-list save button.
+    """
+    rules=parse_excludes(paths)
+    init(data)
+    with sqlite3.connect(database(data)) as db:
+        site=db.execute("SELECT url FROM sites WHERE id=?",(site_id,)).fetchone()
+        if site is None:
+            raise ValueError("Website nicht gefunden")
+        if excluded_by(site[0],rules):
+            raise ValueError("Die Ausschlussliste darf die Startadresse der Website nicht sperren.")
+        db.execute("""INSERT INTO site_settings(site_id,exclude_paths)
+            VALUES(?,?) ON CONFLICT(site_id) DO UPDATE SET
+            exclude_paths=excluded.exclude_paths""",
+            (site_id,json.dumps(rules,ensure_ascii=False)))
+    verified=get(site_id,data)["exclude_paths"]
+    if verified!=rules:
+        raise RuntimeError("Ausschlussliste konnte nicht dauerhaft gespeichert werden.")
+    return verified
+
+
 def require_available(site_id: int, data: Path = DATA) -> None:
     mode = get(site_id,data)["mode"]
     if mode not in MODES:
