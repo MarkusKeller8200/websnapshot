@@ -69,3 +69,23 @@ def test_domain_mode_can_discover_other_section(tmp_path,monkeypatch):
                 "crawl_scope":"host"})
     assert result["pages"]==2
     assert result["crawl_scope"]=="host"
+
+
+def test_scoped_delta_rejects_old_domain_wide_parent(tmp_path,monkeypatch):
+    import pytest
+    import websnapshot.inventory as inventory
+    from websnapshot.core import save
+    from websnapshot.versions import mark_full
+    with sqlite3.connect(database(tmp_path)) as db:
+        db.execute("INSERT INTO sites(id,url,created_at) VALUES(1,?,'now')",(ROOT,))
+    parent=save(1,{ROOT:("Landing","A"),FOREIGN:("Unrelated","B")},[],tmp_path)
+    mark_full(parent,tmp_path)
+    monkeypatch.setattr(inventory,"check_public",lambda _url:None)
+    monkeypatch.setattr(inventory,"_fetch",
+        lambda client,url,max_bytes=2_000_000,timeout=3.0:
+        (b"","text/plain"))
+    with pytest.raises(ValueError,match="Full-Snapshot"):
+        discover_and_snapshot(1,ROOT,limit=5,data=tmp_path,
+            snapshot_kind="partial",
+            config={"crawl_scope":"path","discovery_limit":100,
+                    "page_timeout":3.0,"http_workers":1})
