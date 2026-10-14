@@ -292,6 +292,11 @@ def job_controls(site_id, url, limit, snap_kind):
         col[1].metric("Laufzeit",f"{elapsed//60:02d}:{elapsed%60:02d}")
         col[2].metric("Seiten",info.get("pages",0))
         col[3].metric("Dokumente",info.get("documents",0))
+        if info.get("document_statuses"):
+            status_counts=info["document_statuses"]
+            st.caption("Dokument-URL-Prüfung (HTTP HEAD): " +
+                       " · ".join(f"{label}: {count}" for label,count
+                                in sorted(status_counts.items())))
         if info.get("snapshot_kind")=="partial":
             percent = float(info.get("percent",0) or 0)
             st.progress(min(1.0,max(0.0,percent/100)),text=f"{percent:.1f}% der bekannten URLs geprüft")
@@ -1002,7 +1007,8 @@ if current_page == "Dokumente":
                          "Autor":d.get("author") or "",
                          "Erstellt":format_datetime(d.get("created"),fallback=""),
                          "Geändert":format_datetime(d.get("modified") or d.get("last_modified"),fallback=""),
-                         "Status":d.get("property_status") or d["status"],
+                         "Status":d["status"],
+                         "Datei-Prüfung":d.get("property_status") or "",
                          "Fundstellen":d.get("references",0),
                          "Grösse (HTTP)":d["length"] or "Unbekannt",
                          "Gespeichert":bool(d["downloaded"])}
@@ -1028,6 +1034,8 @@ if current_page == "Dokumente":
                                 "Geändert",width=column_width(editor_rows,"Geändert")),
                             "Status":st.column_config.TextColumn(
                                 "Änderungsstatus",width=column_width(editor_rows,"Status",header="Änderungsstatus")),
+                            "Datei-Prüfung":st.column_config.TextColumn(
+                                "Datei-Prüfung",width=column_width(editor_rows,"Datei-Prüfung")),
                             "Fundstellen":st.column_config.NumberColumn(
                                 "Fundstellen",width=column_width(editor_rows,"Fundstellen")),
                             "Grösse (HTTP)":st.column_config.TextColumn(
