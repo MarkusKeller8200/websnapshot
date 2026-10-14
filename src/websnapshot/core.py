@@ -166,11 +166,9 @@ def snapshot(site_id: int, url: str, limit: int, depth: int, data: Path = DATA) 
 
 
 def compare(old_id: int, new_id: int, data: Path = DATA) -> list[dict]:
-    with sqlite3.connect(database(data)) as db:
-        old = {url: (title, content, digest) for url, title, content, digest in
-               db.execute("SELECT url,title,content,digest FROM pages WHERE run_id=?", (old_id,))}
-        new = {url: (title, content, digest) for url, title, content, digest in
-               db.execute("SELECT url,title,content,digest FROM pages WHERE run_id=?", (new_id,))}
+    from .versions import effective_pages
+    old = effective_pages(old_id,data)
+    new = effective_pages(new_id,data)
     result = []
     for url in sorted(old.keys() | new.keys()):
         if url not in old:
