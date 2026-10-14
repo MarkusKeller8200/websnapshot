@@ -15,7 +15,7 @@ MAX_LENGTH = 2000
 
 def _path(value: str) -> str:
     raw = unquote(value)
-    if "\\x00" in raw or "\\" in raw:
+    if chr(0) in raw or "\\" in raw:
         raise ValueError("Ungültiger URL-Pfad")
     if not raw.startswith("/") or raw.startswith("//"):
         raise ValueError("Ausschlüsse müssen mit / beginnen (keine vollständigen URLs).")
