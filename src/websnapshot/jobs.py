@@ -76,11 +76,20 @@ def _work(job_id: int, site_id: int, url: str, limit: int, data: Path, snapshot_
             db.commit()
         run_id, result = discover_and_snapshot(site_id,url,limit,data,progress=progress,snapshot_kind=snapshot_kind)
         with _connect(data) as db:
+            previous=db.execute("SELECT progress,started_at FROM jobs WHERE id=?",(job_id,)).fetchone()
+            progress_before=json.loads(previous[0] or "{}")
+            ended=datetime.now(timezone.utc)
+            started=datetime.fromisoformat(previous[1])
+            final={**progress_before,**{k:v for k,v in result.items() if k!='errors'},
+                   "snapshot_kind":snapshot_kind,"phase":"Fertig",
+                   "duration_seconds":round((ended-started).total_seconds(),2),
+                   "errors_count":len(result["errors"]),
+                   "percent":100 if snapshot_kind=="partial" and not result["pending"] else None}
             db.execute("""UPDATE jobs SET state='complete', ended_at=?,
                 run_id=?, message=?, progress=? WHERE id=?""",
-                (datetime.now(timezone.utc).isoformat(),run_id,
+                (ended.isoformat(),run_id,
                  f"{result['pages']} Seiten, {result['documents']} Dokumente",
-                 json.dumps({**{k:v for k,v in result.items() if k!='errors'}, "snapshot_kind":snapshot_kind, "percent":100 if snapshot_kind=="partial" and not result["pending"] else None}),job_id))
+                 json.dumps(final,ensure_ascii=False),job_id))
             db.commit()
     except JobCancelled as exc:
         with _connect(data) as db:
@@ -130,3 +139,12 @@ def request_cancel(site_id: int, data: Path = DATA) -> bool:
             AND state IN ('queued','running')""",(site_id,))
         db.commit()
         return cur.rowcount>0
+
+
+def snapshot_job(run_id: int, data: Path = DATA) -> dict | None:
+    """Return historical job metadata, including exact recorded start/end times."""
+    with _connect(data) as db:
+        db.row_factory=sqlite3.Row
+        row=db.execute("SELECT * FROM jobs WHERE run_id=? ORDER BY id DESC LIMIT 1",
+                       (run_id,)).fetchone()
+        return dict(row) if row else None
