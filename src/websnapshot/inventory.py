@@ -64,6 +64,10 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         if progress:
             current = dict(elapsed=round(monotonic()-beginning, 1), pages=len(pages),
                 documents=len(docs), visited=len(visited), discovered=len(found),
+                visit_limit=limit, discovery_limit=MAX_DISCOVERED,
+                pending=len(queue), skipped=skipped,
+                excluded_limits=dict(limit_exclusions),
+                limit_warnings=limit_warnings(),
                 snapshot_kind=snapshot_kind, total_urls=len(baseline) if parent_id else None,
                 changed=sum(1 for u,(_,content) in pages.items() if u not in baseline or
                     sha256(content.encode()).hexdigest()!=baseline[u][2]) if parent_id else 0,
@@ -115,6 +119,18 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         key=path_key(u)
         path_counts[key]=path_counts.get(key,0)+1
     truncated=False
+    limit_exclusions={"discovery":0,"path_variants":0,"page_links":0}
+    def limit_warnings():
+        warnings=[]
+        if limit_exclusions["discovery"]:
+            warnings.append(f"Discovery-Limit ({MAX_DISCOVERED}) erreicht: {limit_exclusions['discovery']} URL-Kandidaten abgewiesen")
+        if limit_exclusions["path_variants"]:
+            warnings.append(f"Pfadvarianten-Limit ({MAX_PER_PATH}) erreicht: {limit_exclusions['path_variants']} URL-Kandidaten abgewiesen")
+        if limit_exclusions["page_links"]:
+            warnings.append(f"Links-pro-Seite-Limit ({MAX_PER_PAGE}) erreicht: {limit_exclusions['page_links']} Links nicht weiterverfolgt")
+        if len(visited)>=limit and queue:
+            warnings.append(f"Besuchslimit ({limit}) erreicht: {len(queue)} URLs offen")
+        return warnings
     def enqueue(link, source):
         nonlocal truncated, skipped
         try:
@@ -128,11 +144,13 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
             if urlsplit(link).netloc!=host or link in queued:
                 return
             if len(queued)>=MAX_DISCOVERED:
+                limit_exclusions["discovery"]+=1
                 truncated=True
                 skipped+=1
                 return
             key=path_key(link)
             if path_counts.get(key,0)>=MAX_PER_PATH:
+                limit_exclusions["path_variants"]+=1
                 skipped+=1
                 truncated=True
                 return
@@ -210,6 +228,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                     for link in links[:MAX_PER_PAGE]:
                         enqueue(link,'browser-link')
                     if len(links)>MAX_PER_PAGE:
+                        limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
                         truncated=True
                 emit(phase="Browser-Erfassung")
                 continue
@@ -229,6 +248,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
             for link in (links[:MAX_PER_PAGE] if not parent_id else []):
                 enqueue(link,"html-link")
             if not parent_id and len(links)>MAX_PER_PAGE:
+                limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
                 truncated=True
         except (requests.RequestException, ValueError, OSError) as exc:
             errors.append(f"{url}: {exc}")
@@ -237,8 +257,9 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
     remaining = len(queue)
     if remaining:
         errors.append(f"Schutzlimit erreicht: {remaining} URLs noch offen")
-    if truncated:
-        errors.append("Discovery-Schutzlimit erreicht: weitere URL-Varianten ausgeschlossen")
+    for warning in limit_warnings():
+        if not warning.startswith("Besuchslimit"):
+            errors.append(warning)
     if renderer:
         renderer.close()
     if parent_id:
@@ -266,6 +287,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
                     "changed_since_full":sum(1 for u,(_,content) in pages.items() if u not in full_baseline or sha256(content.encode()).hexdigest()!=full_baseline[u][2]) if parent_id else 0,
                     "discovered":len(found), "pages":len(pages), "documents":len(docs),
                     "visited":len(visited), "skipped":skipped, "pending":remaining,
+                    "excluded_limits":dict(limit_exclusions), "limit_warnings":limit_warnings(),
                     "sitemaps":len(sitemap_seen), "changed":changed, "errors":errors}
 
 
