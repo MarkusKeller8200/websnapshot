@@ -19,7 +19,7 @@ from .core import DATA, MAX_BYTES, AGENT, check_public, database, extract, norma
 from .documents import inventory_documents
 from .document_metadata import save_references
 from .doclinks import related_document
-from .versions import latest_run, effective_pages, save_partial, mark_full, kind
+from .versions import latest_run, effective_pages, save_partial, mark_full, kind as snapshot_kind_for_run
 from .settings import get as get_capture
 from .crawl_scope import eligible_link, within_scope, is_document, effective_scope
 from .global_settings import get as get_global
@@ -187,8 +187,8 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     baseline = effective_pages(parent_id,data) if parent_id else {}
     full_id = parent_id
     if parent_id:
-        while kind(full_id,data)[1] is not None:
-            full_id=kind(full_id,data)[1]
+        while snapshot_kind_for_run(full_id,data)[1] is not None:
+            full_id=snapshot_kind_for_run(full_id,data)[1]
     full_baseline=effective_pages(full_id,data) if full_id else {}
     def register_change(url,content):
         nonlocal changed_count,changed_from_full
@@ -453,9 +453,9 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     url_records[url]=(url_records[url][0],"failed",str(error)[:120])
                     emit(phase="Seiten durchsuchen")
                     continue
-                body,kind=reply
-                if "text/html" not in kind:
-                    if any(k in kind for k in ("pdf","msword","wordprocessingml","spreadsheetml","vnd.ms-excel","text/plain","text/csv","application/csv")):
+                body,content_type=reply
+                if "text/html" not in content_type:
+                    if any(k in content_type for k in ("pdf","msword","wordprocessingml","spreadsheetml","vnd.ms-excel","text/plain","text/csv","application/csv")):
                         docs.add(url)
                         url_records[url]=(url_records[url][0],"document","")
                     else:
