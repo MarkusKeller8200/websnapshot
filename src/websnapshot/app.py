@@ -18,10 +18,12 @@ from websnapshot.diagnostics import summary
 from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
 from websnapshot.versions import kind, effective_pages, remove_snapshot
 from urllib.parse import urlsplit
+from hashlib import sha1
+from websnapshot.document_selection import filter_documents, bulk_selection, merge_visible
 
 ROOT = Path(__file__).resolve().parents[2]
 st.set_page_config(page_title="WebSnapshot", page_icon="📸", layout="wide",
-                   initial_sidebar_state="collapsed")
+                   initial_sidebar_state="expanded")
 st.markdown("""
 <style>
 .block-container {max-width: 100% !important; padding-top: 1rem !important;
@@ -40,6 +42,40 @@ st.caption("Lokale Website-Inventarisierung · Version 0.6.3")
 
 tab_overview, tab_sites, tab_snapshots, tab_map, tab_system = st.tabs(
     ["Dashboard", "Websites verwalten", "Snapshots & Vergleich", "Sitemap", "Updates"])
+
+
+# Website selection is persistent across Snapshot, Sitemap and administration views.
+site_options = dict(sites())
+if st.session_state.get("active_site_id") not in site_options:
+    st.session_state["active_site_id"] = next(iter(site_options), None)
+active_site_id = st.session_state["active_site_id"]
+with st.sidebar:
+    st.markdown("### 🧭 Webseiten")
+    st.caption("Website auswählen · links oben ein- und ausklappbar")
+    site_search = st.text_input("Webseiten suchen", placeholder="Domain oder Adresse …",
+                                key="sidebar_site_search", label_visibility="collapsed")
+    listed_sites = [(sid, address) for sid, address in site_options.items()
+                    if site_search.casefold().strip() in address.casefold()]
+    for sid, address in listed_sites:
+        parsed = urlsplit(address)
+        label = parsed.netloc + (parsed.path.rstrip("/") if parsed.path not in ("", "/") else "")
+        label = label[:43] + "…" if len(label)>44 else label
+        if st.button(f"🌐 {label}", key=f"sidebar_site_{sid}",
+                     type="primary" if sid==active_site_id else "secondary",
+                     help=address, use_container_width=True):
+            st.session_state["active_site_id"]=sid
+            st.rerun()
+    if not site_options:
+        st.info("Noch keine Websites vorhanden.")
+    elif not listed_sites:
+        st.caption("Keine Websites für diesen Suchbegriff.")
+    if active_site_id in site_options:
+        st.divider()
+        st.caption("Aktuell ausgewählt")
+        st.markdown(f"**{urlsplit(site_options[active_site_id]).netloc}**")
+        st.caption(site_options[active_site_id])
+    st.divider()
+    st.caption("➕ Neue Websites unter «Websites verwalten» hinzufügen.")
 
 
 @st.fragment(run_every="2s")
@@ -193,37 +229,45 @@ with tab_sites:
                 st.rerun()
             except (ValueError, OSError) as exc:
                 st.error(str(exc))
-    entries = dashboard()
-    for entry in entries:
-        with st.expander(entry["url"], expanded=False):
-            st.write(f"Snapshots: {entry['snapshots']} · Seiten: {entry['pages']} · "
-                     f"Dokumentlinks: {entry['documents']}")
+    if active_site_id is not None:
+        entry = next((e for e in dashboard() if e["id"]==active_site_id), None)
+        if entry:
+            st.subheader("🌐 " + entry["url"])
+            st.caption(f"Snapshots: {entry['snapshots']} · Seiten: {entry['pages']} · "
+                       f"Dokumentlinks: {entry['documents']}")
             current = get_capture(entry["id"])
-            mode = st.selectbox("Erfassungsmodus", options=list(MODES),
-                format_func=lambda m: MODES[m], index=list(MODES).index(current["mode"]),
-                key=f"mode_{entry['id']}")
-            with st.expander("Browser-Einstellungen"):
+            setting_col, note_col = st.columns([3,2],vertical_alignment="top")
+            with setting_col:
+                mode = st.selectbox("Erfassungsmodus", options=list(MODES),
+                    format_func=lambda m: MODES[m], index=list(MODES).index(current["mode"]),
+                    key=f"mode_{entry['id']}")
+            with note_col:
+                if mode != STATIC:
+                    st.info("Browsermodus benötigt Playwright und Chromium.")
+            with st.expander("Erweiterte Browser-Einstellungen"):
                 selector = st.text_input("CSS-Selektor, auf den gewartet werden soll",
                     value=current["wait_selector"], key=f"selector_{entry['id']}")
                 delay = st.number_input("Zusätzliche Wartezeit in Millisekunden", min_value=0,
                     max_value=30000, value=current["wait_ms"], step=500,
                     key=f"delay_{entry['id']}")
-            if mode != STATIC:
-                st.info("Browsermodus benötigt Playwright und Chromium.")
-            if st.button("Erfassungseinstellungen speichern", key=f"settings_{entry['id']}"):
+            if st.button("💾 Erfassungseinstellungen speichern", key=f"settings_{entry['id']}"):
                 try:
                     set_settings(entry["id"],mode,selector,int(delay))
                     st.success("Einstellungen gespeichert.")
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))
-            deletion = st.checkbox("Auch alle gespeicherten Snapshots dieser Website löschen",
-                                   key=f"hist_{entry['id']}")
-            confirm = st.checkbox("Entfernung bestätigen", key=f"confirm_{entry['id']}")
-            if st.button("Website entfernen", key=f"remove_{entry['id']}", disabled=not confirm):
-                remove_site(entry["id"], delete_history=deletion)
-                st.success("Website entfernt.")
-                st.rerun()
+            with st.expander("⚠️ Website entfernen", expanded=False):
+                deletion = st.checkbox("Auch alle gespeicherten Snapshots dieser Website löschen",
+                                       key=f"hist_{entry['id']}")
+                confirm = st.checkbox("Entfernung bestätigen",key=f"confirm_{entry['id']}")
+                if st.button("Website entfernen",key=f"remove_{entry['id']}",disabled=not confirm):
+                    remove_site(entry["id"],delete_history=deletion)
+                    st.session_state["active_site_id"]=None
+                    st.success("Website entfernt.")
+                    st.rerun()
+    else:
+        st.caption("Website links in der Seitenleiste auswählen oder neu hinzufügen.")
     st.caption("Ohne Löschen der Historie bleiben ältere Snapshots in der Datenbank erhalten, "
                "sind nach Entfernen der Website aber über die Oberfläche nicht mehr zugänglich.")
 
@@ -232,15 +276,11 @@ with tab_snapshots:
     if not options:
         st.info("Bitte zuerst unter «Websites verwalten» eine Website hinzufügen.")
     else:
-        st.subheader("Snapshot-Zentrale")
-        left, right = st.columns([3, 2], vertical_alignment="bottom")
-        with left:
-            site_id = st.selectbox("Website", list(options), format_func=lambda i:options[i],
-                                   key="snapshot_site")
+        site_id = active_site_id
+        st.subheader("📸 Snapshots · " + urlsplit(options[site_id]).netloc)
         capture = get_capture(site_id)
-        with right:
-            st.caption(f"Erfassung: {MODES[capture['mode']]} · "
-                       "Einstellungen unter «Websites verwalten»")
+        st.caption(f"Website: {options[site_id]} · Modus: {MODES[capture['mode']]} · "
+                   "Andere Website links in der Seitenleiste wählen.")
 
         history = runs(site_id)
         with st.container(border=True):
@@ -478,7 +518,8 @@ with tab_map:
     if not options:
         st.info("Bitte zuerst eine Website hinzufügen.")
     else:
-        chosen = st.selectbox("Website",list(options),format_func=lambda i:options[i],key="map_site")
+        chosen = active_site_id
+        st.caption(f"🌐 {options[chosen]} · Website wechseln: linke Seitenleiste")
         map_history = runs(chosen)
         if not map_history:
             st.info("Noch kein Snapshot erfasst.")
