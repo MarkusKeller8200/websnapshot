@@ -125,6 +125,8 @@ def inventory_documents(run_id: int, site_id: int, urls: set[str],
                                   allow_redirects=False) as res:
                     if res.is_redirect:
                         status=f"Weiterleitung (HTTP {res.status_code})"
+                    elif res.status_code in (405,501):
+                        status=f"HEAD nicht unterstützt (HTTP {res.status_code})"
                     elif not res.ok:
                         status=f"Nicht erreichbar (HTTP {res.status_code})"
                     else:
