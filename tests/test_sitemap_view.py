@@ -94,3 +94,22 @@ def test_effective_metadata_inherits_full_pages(tmp_path: Path):
     assert [x["URL"] for x in items]==["https://example.org/a","https://example.org/b"]
     assert items[0]["Titel"]=="New"
     assert items[1]["Zeichen"]==3
+
+
+
+def test_all_levels_button_expands_every_folder_without_exceeding_visible_limit():
+    """The Sitemap toolbar must offer a fast all-levels action alongside collapse."""
+    app=(Path(__file__).resolve().parents[1]/"src"/"websnapshot"/"app.py").read_text(
+        encoding="utf-8")
+    assert 'st.button("🗂️ Alle Ebenen"' in app
+    assert 'key=f"tree_all_{site_id}_{selected_run}"' in app
+    assert 'expanded=all_parent_ids(tree)' in app
+    assert 'rows,node_ids,truncated=visible_tree_rows(tree,expanded,limit=2500)' in app
+    tree=tree_from_pages(samples())
+    expanded=all_parent_ids(tree)
+    assert len(expanded)>=5
+    rows,ids,limited=visible_tree_rows(tree,expanded,limit=2500)
+    assert len(rows)==len(samples()) and not limited
+    assert ids[-1].endswith("p-5984")
+    few,_,limited=visible_tree_rows(tree,expanded,limit=2)
+    assert len(few)==2 and limited
