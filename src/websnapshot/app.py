@@ -94,7 +94,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 st.markdown("## 📸 WebSnapshot")
-st.caption("Website-Inventarisierung, Snapshots und Änderungsanalyse · v0.6.11")
+st.caption("Website-Inventarisierung, Snapshots und Änderungsanalyse · v0.6.12")
 
 NAV = [
     ("ÜBERSICHT", [
