@@ -667,11 +667,10 @@ if current_page == "Snapshot-Verwaltung":
                     key=f"manage_export_{selected}")
             with st.expander(f"⚠️ Fehler und Warnungen ({len(issues)})",expanded=bool(issues)):
                 if issues:
-                    st.dataframe([{"Nr.":i,"Meldung":message}
-                        for i,message in enumerate(issues,1)],hide_index=True,width="stretch",height=350,
-                        column_config={"Nr.":st.column_config.Column(
-                            width=column_width([{"Nr.":i,"Meldung":msg}
-                                  for i,msg in enumerate(issues,1)],"Nr."))})
+                    error_rows=[{"Nr.":i,"Meldung":message}
+                                for i,message in enumerate(issues,1)]
+                    st.dataframe(error_rows,hide_index=True,width="stretch",height=350,
+                        column_config=streamlit_columns(error_rows))
                     st.download_button("Fehlerprotokoll herunterladen",
                         json.dumps(issues,ensure_ascii=False,indent=2),
                         file_name=f"websnapshot_{selected}_errors.json",mime="application/json")
@@ -728,15 +727,15 @@ if current_page == "Snapshot-Verwaltung":
                     top_q=discovery_info.get("top_query_parameters",[])
                     if top_q:
                         st.markdown("**Häufigste URL-Parameter**")
-                        st.dataframe([{"Parameter":k,"Vorkommen":count}
-                                      for k,count in top_q],hide_index=True,
-                                      width="stretch")
+                        q_rows=[{"Parameter":k,"Vorkommen":count} for k,count in top_q]
+                        st.dataframe(q_rows,hide_index=True,width="stretch",
+                            column_config=streamlit_columns(q_rows))
                     top_paths=discovery_info.get("top_variant_paths",[])
                     if top_paths:
                         st.markdown("**Pfade mit den meisten URL-Varianten**")
-                        st.dataframe([{"Pfad":p,"Varianten":v}
-                                      for p,v in top_paths],hide_index=True,
-                                      width="stretch")
+                        top_path_rows=[{"Pfad":p,"Varianten":v} for p,v in top_paths]
+                        st.dataframe(top_path_rows,hide_index=True,width="stretch",
+                            column_config=streamlit_columns(top_path_rows))
                     if discovery_info.get("robots_examples"):
                         with st.expander("Beispiele: durch robots.txt blockierte URLs"):
                             st.code("\n".join(discovery_info["robots_examples"]),
@@ -747,11 +746,12 @@ if current_page == "Snapshot-Verwaltung":
                 user_exclusions=excluded_path_summary(selected)
                 if user_exclusions:
                     st.markdown("**Eigene Pfad-Ausschlussliste**")
-                    st.dataframe([
+                    excluded_path_rows=[
                         {"Ausgeschlossener Pfad":item["Pfadregel"],
                          "Übersprungene URL-Kandidaten":item["Ausgeschlossene URL-Kandidaten"]}
-                        for item in user_exclusions],
-                        hide_index=True,width="stretch")
+                        for item in user_exclusions]
+                    st.dataframe(excluded_path_rows,hide_index=True,width="stretch",
+                        column_config=streamlit_columns(excluded_path_rows))
                     matched=[item for item in user_exclusions
                              if item["Ausgeschlossene URL-Kandidaten"]]
                     if matched:
@@ -779,9 +779,13 @@ if current_page == "Snapshot-Verwaltung":
                     st.dataframe(excluded_rows,hide_index=True,width="stretch",
                         column_config={
                             "Quellseite":st.column_config.LinkColumn(
-                                "Quellseite",width=340),
+                                "Quellseite",width=column_width(excluded_rows,"Quellseite")),
                             "Ausgeschlossene URL":st.column_config.LinkColumn(
-                                "Nicht weiterverfolgte URL")})
+                                "Nicht weiterverfolgte URL",
+                                width=column_width(excluded_rows,"Ausgeschlossene URL",
+                                                   header="Nicht weiterverfolgte URL")),
+                            "Grund":st.column_config.TextColumn(
+                                "Grund",width=column_width(excluded_rows,"Grund"))})
                     st.caption(f"{len(excluded_rows)} von {exclusion_total} "
                                "Treffern sichtbar. CSV-Export in Blöcken "
                                "mit höchstens 10'000 Zeilen.")
@@ -1025,10 +1029,13 @@ if current_page == "Dokumente":
                             "Status":st.column_config.TextColumn(
                                 "Änderungsstatus",width=column_width(editor_rows,"Status")),
                             "Fundstellen":st.column_config.NumberColumn(
-                                "Fundstellen",width=110),
+                                "Fundstellen",width=column_width(editor_rows,"Fundstellen")),
                             "Grösse (HTTP)":st.column_config.TextColumn(
-                                "Grösse",width=120),
-                            "Gespeichert":st.column_config.CheckboxColumn("Heruntergeladen")})
+                                "Grösse",width=column_width(editor_rows,"Grösse (HTTP)",
+                                                           header="Grösse")),
+                            "Gespeichert":st.column_config.CheckboxColumn("Heruntergeladen",
+                                width=column_width(editor_rows,"Gespeichert",
+                                                   header="Heruntergeladen"))})
                     visible_selected={row["Dokument"] for row in edited if row["Auswahl"]}
                     selected_urls=merge_visible(
                         selected_urls,all_urls,visible_urls,visible_selected)
@@ -1046,12 +1053,16 @@ if current_page == "Dokumente":
                         st.caption(f"**{len(ref_rows)} Fundstellen** · "
                                    f"Dateimetadaten: {details.get('property_status') or 'Noch nicht geprüft'}")
                         if ref_rows:
-                            st.dataframe([{"Fundstelle":r["url"],"Quelle":r["type"]}
-                                          for r in ref_rows],
-                                         width="stretch",hide_index=True,
-                                         column_config={
-                                            "Fundstelle":st.column_config.LinkColumn(
-                                                "Gefunden auf",width="large")})
+                            # All columns, including the source-type column, are fitted.
+                        ref_table=[{"Fundstelle":r["url"],"Quelle":r["type"]}
+                                   for r in ref_rows]
+                        st.dataframe(ref_table,width="stretch",hide_index=True,
+                            column_config={
+                                "Fundstelle":st.column_config.LinkColumn("Gefunden auf",
+                                    width=column_width(ref_table,"Fundstelle",
+                                                       header="Gefunden auf")),
+                                "Quelle":st.column_config.TextColumn("Quelle",
+                                    width=column_width(ref_table,"Quelle"))})
                         else:
                             st.caption("Keine Quellseiten gespeichert – bei älteren "
                                        "Snapshots werden Fundstellen nicht nachträglich ermittelt.")
@@ -1064,8 +1075,10 @@ if current_page == "Dokumente":
                             {"Eigenschaft":"SHA-256 (intern)",
                              "Wert":details.get("sha256") or "Noch nicht geprüft"},
                         ]
-                        st.dataframe(http_rows+display_properties(details.get("properties") or {}),
-                            hide_index=True,width="stretch")
+                        property_rows=http_rows+display_properties(
+                            details.get("properties") or {})
+                        st.dataframe(property_rows,hide_index=True,width="stretch",
+                            column_config=streamlit_columns(property_rows))
                         if details.get("property_error"):
                             st.warning(details["property_error"])
                         if st.button("Eigenschaften dieses Dokuments prüfen",
