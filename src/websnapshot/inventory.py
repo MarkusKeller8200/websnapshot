@@ -24,6 +24,7 @@ from .settings import get as get_capture
 from .crawl_scope import eligible_link, within_scope, is_document, effective_scope
 from .global_settings import get as get_global
 from .performance import Timings, save as save_performance
+from .link_exclusions import LinkExclusionJournal
 from hashlib import sha256
 from .diagnostics import canonical, path_key, MAX_DISCOVERED, MAX_PER_PATH, MAX_PER_PAGE, record, record_quality, duplicate_groups
 
@@ -75,6 +76,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     discovery_limit = int(config.get("discovery_limit",200000))
     page_timeout = float(config.get("page_timeout",3.0))
     http_workers = max(1,min(10,int(config.get("http_workers",3))))
+    links_per_page = max(1,min(10000,int(config.get("links_per_page",1000))))
     timings = Timings()
     static_pages = browser_static_pages = browser_dynamic_pages = browser_unknown_pages = timeouts = 0
     changed_count = changed_from_full = 0
@@ -92,6 +94,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                 documents=len(docs), visited=len(visited), discovered=len(found),
                 visit_limit=limit, discovery_limit=discovery_limit,
                 page_timeout=page_timeout, http_workers=http_workers,
+                links_per_page=links_per_page,
                 crawl_scope=effective_mode,scope_excluded=scope_excluded,
                 performance=timings.summary(),
                 static_pages=static_pages,
@@ -171,6 +174,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
     errors = []
     docs = set()
     document_references = {}
+    link_audit = LinkExclusionJournal()
     found = set(queued)
     url_records = {u: ('baseline' if parent_id else 'start','queued','') for u in queued}
     path_counts = {}
@@ -187,7 +191,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
         if limit_exclusions["path_variants"]:
             warnings.append(f"Pfadvarianten-Limit ({MAX_PER_PATH}) erreicht: {limit_exclusions['path_variants']} URL-Kandidaten abgewiesen")
         if limit_exclusions["page_links"]:
-            warnings.append(f"Links-pro-Seite-Limit ({MAX_PER_PAGE}) erreicht: {limit_exclusions['page_links']} Links nicht weiterverfolgt")
+            warnings.append(f"Links-pro-Seite-Limit ({links_per_page}) erreicht: {limit_exclusions['page_links']} Links nicht weiterverfolgt")
         if len(visited)>=limit and queue:
             warnings.append(f"Besuchslimit ({limit}) erreicht: {len(queue)} URLs offen")
         return warnings
@@ -353,10 +357,11 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                             urlsplit(link).netloc==host and
                             not eligible_link(link,start,effective_mode))
                         links=links_allowed
-                        for link in links[:MAX_PER_PAGE]:
+                        for link in links[:links_per_page]:
                             enqueue(link,"browser-link",url)
-                        if len(links)>MAX_PER_PAGE:
-                            limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
+                        if len(links)>links_per_page:
+                            limit_exclusions["page_links"]+=len(links)-links_per_page
+                            link_audit.add(url,links[links_per_page:])
                             truncated=True
                         timings.observe("discovery_links",perf_counter()-discovery_tick,url)
                 except (requests.RequestException,ValueError,OSError,Exception) as exc:
@@ -401,10 +406,11 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                             urlsplit(link).netloc==host and
                             not eligible_link(link,start,effective_mode))
                         links=links_allowed
-                        for link in links[:MAX_PER_PAGE]:
+                        for link in links[:links_per_page]:
                             enqueue(link,"html-link",url)
-                        if len(links)>MAX_PER_PAGE:
-                            limit_exclusions["page_links"]+=len(links)-MAX_PER_PAGE
+                        if len(links)>links_per_page:
+                            limit_exclusions["page_links"]+=len(links)-links_per_page
+                            link_audit.add(url,links[links_per_page:])
                             truncated=True
                         timings.observe("discovery_links",perf_counter()-discovery_tick,url)
                 except (ValueError,TypeError) as exc:
@@ -444,6 +450,7 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                    (run_id, len(found), len(docs), len(visited), skipped,
                     remaining, len(sitemap_seen)))
     record(run_id,url_records,data)
+    link_audit.persist(run_id,data)
     record_quality(run_id,dict(discovered=len(found),visited=len(visited),archived=len(pages),
         documents=len(docs),pending=remaining,skipped=skipped,errors=len(errors),
         duplicate_content=duplicate_groups(pages),truncated=int(truncated or remaining>0),
@@ -463,7 +470,9 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 2000,
                     "excluded_limits":dict(limit_exclusions), "limit_warnings":limit_warnings(),
                     "sitemaps":len(sitemap_seen), "changed":changed, "errors":errors,
                     "discovery_limit":discovery_limit,"page_timeout":page_timeout,
-                    "http_workers":http_workers,"performance":timings.summary(),
+                    "http_workers":http_workers,"links_per_page":links_per_page,
+                    "excluded_link_pages":len(link_audit.per_source),
+                    "performance":timings.summary(),
                     "static_pages":static_pages,"browser_static_pages":browser_static_pages,
                     "browser_dynamic_pages":browser_dynamic_pages,
                     "browser_unknown_pages":browser_unknown_pages,"timeouts":timeouts}
