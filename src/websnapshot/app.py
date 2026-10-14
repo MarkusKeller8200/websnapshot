@@ -1015,11 +1015,11 @@ if current_page == "Dokumente":
                         disabled=[key for key in editor_rows[0] if key!="Auswahl"],
                         column_config={
                             "Auswahl":st.column_config.CheckboxColumn(
-                                "Auswahl",width=100,required=True),
+                                "Auswahl",width=column_width(editor_rows,"Auswahl"),required=True),
                             "Dokument":st.column_config.LinkColumn(
-                                "Dokument / URL",width=column_width(editor_rows,"Dokument")),
+                                "Dokument / URL",width=column_width(editor_rows,"Dokument",header="Dokument / URL",link=True)),
                             "Titel":st.column_config.TextColumn(
-                                "Dokumenttitel",width=column_width(editor_rows,"Titel")),
+                                "Dokumenttitel",width=column_width(editor_rows,"Titel",header="Dokumenttitel")),
                             "Autor":st.column_config.TextColumn(
                                 "Autor",width=column_width(editor_rows,"Autor")),
                             "Erstellt":st.column_config.TextColumn(
@@ -1027,7 +1027,7 @@ if current_page == "Dokumente":
                             "Geändert":st.column_config.TextColumn(
                                 "Geändert",width=column_width(editor_rows,"Geändert")),
                             "Status":st.column_config.TextColumn(
-                                "Änderungsstatus",width=column_width(editor_rows,"Status")),
+                                "Änderungsstatus",width=column_width(editor_rows,"Status",header="Änderungsstatus")),
                             "Fundstellen":st.column_config.NumberColumn(
                                 "Fundstellen",width=column_width(editor_rows,"Fundstellen")),
                             "Grösse (HTTP)":st.column_config.TextColumn(
@@ -1188,13 +1188,13 @@ if current_page == "Sitemap":
                     height=table_height,row_height=32,
                     column_order=["Pfad","Titel","Zeichen","Öffnen","URL"],
                     column_config={
-                        "Pfad":st.column_config.TextColumn("Pfad",width=column_width(filtered,"Pfad")),
+                        "Pfad":st.column_config.TextColumn("Pfad",width=column_width(filtered,"Pfad",header="Pfad")),
                         "Titel":st.column_config.TextColumn("Seitentitel",
-                            width=column_width(filtered,"Titel")),
+                            width=column_width(filtered,"Titel",header="Seitentitel")),
                         "Zeichen":st.column_config.NumberColumn("Zeichen",format="%d",
                             width=column_width(filtered,"Zeichen")),
                         "Öffnen":st.column_config.LinkColumn("Original",
-                            display_text="Öffnen ↗",width=110),
+                            display_text="Öffnen ↗",width=column_width(filtered,"Öffnen",cap=132,header="Original")),
                         "URL":st.column_config.TextColumn("URL")})
                 st.caption("Die flache Ansicht lässt sich durch Klick auf einen "
                            "Spaltenkopf beliebig sortieren.")
@@ -1248,7 +1248,7 @@ if current_page == "Sitemap":
                                       "Titel","Zeichen","Öffnen","URL"],
                         column_config={
                             "Aufklappen":st.column_config.CheckboxColumn(
-                                "Aufklappen",width=100,required=True),
+                                "Aufklappen",width=column_width(rows,"Aufklappen"),required=True),
                             "Ebene / Pfad":st.column_config.TextColumn(
                                 "Verzeichnis / Pfad",
                                 width=column_width(rows,"Ebene / Pfad",cap=410)),
@@ -1259,7 +1259,8 @@ if current_page == "Sitemap":
                             "Zeichen":st.column_config.NumberColumn("Zeichen",
                                 width=column_width(rows,"Zeichen")),
                             "Öffnen":st.column_config.LinkColumn(
-                                "Original",display_text="Öffnen ↗",width=110),
+                                "Original",display_text="Öffnen ↗",
+                                 width=column_width(rows,"Öffnen",cap=132,header="Original")),
                             "URL":st.column_config.TextColumn("URL")})
                     if not search.strip():
                         changed=False
