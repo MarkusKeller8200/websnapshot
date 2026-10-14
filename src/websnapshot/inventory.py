@@ -2,6 +2,7 @@
 from __future__ import annotations
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+import threading
 from time import perf_counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -255,16 +256,21 @@ def discover_and_snapshot(site_id: int, start: str, limit: int = 1000,
         enqueue(link,'sitemap')
     timings.observe("discovery_initial",perf_counter()-discovery_started,origin)
     emit(phase='Seiten durchsuchen')
+    worker_state=threading.local()
     def fetch_page(url):
-        # Every worker owns its Session; requests.Session is not thread-safe.
+        # A persistent Session per worker reuses TCP/TLS connections and never
+        # shares a requests.Session across threads.
         started=perf_counter()
-        with requests.Session() as client:
+        client=getattr(worker_state,"client",None)
+        if client is None:
+            client=requests.Session()
             client.headers["User-Agent"]=AGENT
-            try:
-                result=_fetch(client,url,MAX_BYTES,page_timeout)
-                return result,None,perf_counter()-started
-            except (requests.RequestException,ValueError,OSError) as exc:
-                return None,exc,perf_counter()-started
+            worker_state.client=client
+        try:
+            result=_fetch(client,url,MAX_BYTES,page_timeout)
+            return result,None,perf_counter()-started
+        except (requests.RequestException,ValueError,OSError) as exc:
+            return None,exc,perf_counter()-started
 
     with ThreadPoolExecutor(max_workers=1 if renderer else http_workers,
                             thread_name_prefix="websnapshot-fetch") as executor:
