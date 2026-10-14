@@ -25,3 +25,14 @@ def test_documents_have_bulk_controls_and_direct_selection():
         assert token in code
     assert 'st.data_editor(' in code
     assert 'merge_visible(' in code
+
+
+def test_compact_menu_tooltips_appear_to_the_right_only():
+    code=SOURCE.read_text(encoding="utf-8")
+    assert 'left: calc(100% + 8px)' in code
+    assert 'top: 50%' in code
+    assert 'st-key-ws_nav_item_' in code
+    assert 'with st.container(key=f"ws_nav_item_{nav_item_index}")' in code
+    assert 'if compact_nav:' in code
+    assert 'help=label if compact_nav else None' not in code
+    assert 'help="Menü ausklappen" if compact_nav else None' in code
