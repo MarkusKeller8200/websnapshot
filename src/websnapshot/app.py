@@ -17,6 +17,7 @@ from websnapshot.document_properties import display_properties
 from websnapshot.jobs import launch, latest, running, recover_interrupted, request_cancel, snapshot_job
 from websnapshot.job_logging import read as read_job_log, log_path
 from websnapshot.diagnostics import summary
+from websnapshot.path_exclusion_audit import summary as excluded_path_summary
 from websnapshot.link_exclusions import stats as excluded_link_stats, page as excluded_link_page, csv_page as excluded_link_csv_page
 from websnapshot.settings import MODES, STATIC, get as get_capture, set_settings
 from websnapshot.crawl_scope import SCOPES, effective_scope, logical_root
@@ -322,6 +323,10 @@ def job_controls(site_id, url, limit, snap_kind):
         if info.get("crawl_scope")=="path":
             st.caption(f"Unterbereich aktiv · Ausserhalb des Bereichs verworfene "
                        f"URL-Kandidaten: {info.get('scope_excluded',0):,}".replace(",", "'"))
+        if info.get("exclude_paths"):
+            st.caption(f"Eigene Ausschlussregeln: {len(info['exclude_paths'])} · "
+                       f"Übersprungene URL-Kandidaten: {info.get('path_excluded',0):,}"
+                       .replace(",", "'"))
         warnings=info.get("limit_warnings",[])
         if warnings:
             st.warning("**Schutzlimit erreicht**\n\n" + "\n\n".join(
@@ -458,6 +463,18 @@ if current_page == "Websites verwalten":
             else:
                 st.caption("Gesamte Domain: Interne Links dürfen in andere "
                            "Pfadbereiche der gleichen Domain führen.")
+            st.markdown("**Crawl-Ausschlussliste (pro Website)**")
+            exclusion_text=st.text_area(
+                "Nicht zu erfassende URL-Pfade – ein Pfad pro Zeile",
+                value="\n".join(current.get("exclude_paths",[])),
+                height=165,key=f"exclude_paths_{entry['id']}",
+                placeholder="/schule-hinterbirch/aktuelles/agenda/p-2002")
+            st.caption("Der angegebene Pfad und alle darunterliegenden Seiten "
+                       "werden ausgelassen. Query-Varianten und zugehörige "
+                       ".html-Startseiten sind eingeschlossen. "
+                       "Nur Pfade ab / verwenden; keine Platzhalter nötig. "
+                       "Leere Zeilen und Kommentarzeilen mit # sind erlaubt. "
+                       "Die Startadresse selbst darf nicht ausgeschlossen werden.")
             with st.expander("Erweiterte Browser-Einstellungen"):
                 selector = st.text_input("CSS-Selektor, auf den gewartet werden soll",
                     value=current["wait_selector"], key=f"selector_{entry['id']}")
@@ -466,7 +483,8 @@ if current_page == "Websites verwalten":
                     key=f"delay_{entry['id']}")
             if st.button("💾 Erfassungseinstellungen speichern", key=f"settings_{entry['id']}"):
                 try:
-                    set_settings(entry["id"],mode,selector,int(delay),scope=scope)
+                    set_settings(entry["id"],mode,selector,int(delay),scope=scope,
+                                 exclude_paths=exclusion_text)
                     st.success("Einstellungen gespeichert.")
                     st.rerun()
                 except ValueError as exc:
@@ -643,6 +661,26 @@ if current_page == "Snapshot-Verwaltung":
                 st.write("URL-Quellen",diag["sources"])
                 st.write("Bearbeitungsstatus",diag["statuses"])
                 st.write("Ausschlussgründe",diag["reasons"])
+                user_exclusions=excluded_path_summary(selected)
+                if user_exclusions:
+                    st.markdown("**Eigene Pfad-Ausschlussliste**")
+                    st.dataframe([
+                        {"Ausgeschlossener Pfad":item["Pfadregel"],
+                         "Übersprungene URL-Kandidaten":item["Ausgeschlossene URL-Kandidaten"]}
+                        for item in user_exclusions],
+                        hide_index=True,width="stretch")
+                    matched=[item for item in user_exclusions
+                             if item["Ausgeschlossene URL-Kandidaten"]]
+                    if matched:
+                        chosen_rule=st.selectbox("Beispiel-URLs für eine Ausschlussregel",
+                            [item["Pfadregel"] for item in matched],
+                            key=f"excluded_path_rule_{selected}")
+                        samples=next(item["Beispiele"] for item in matched
+                                     if item["Pfadregel"]==chosen_rule)
+                        st.code("\n".join(samples),language="text")
+                        st.caption("Bis zu 20 Beispiel-URLs pro Regel. "
+                                   "Die vollständige Anzahl wird getrennt gezählt.")
+
                 excluded_summary=excluded_link_stats(selected)
                 st.markdown("**Links-pro-Seite: ausgelassene URLs und Quellseiten**")
                 st.caption(f"{excluded_summary['excluded_links']:,} ausgelassene Links "
