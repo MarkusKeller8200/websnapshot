@@ -2,6 +2,16 @@
 
 Die offiziellen GitHub-Releases werden aus den versionierten Release-Notizen unter `docs/releases/` erstellt. **Jede künftig veröffentlichte Version erhält vor dem Release einen eigenen Changelog-Eintrag**, und die Veröffentlichung erfolgt nach den Tests über GitHub Actions. Versionierte GitHub-Releases sind von normalen Entwicklungscommits zu unterscheiden.
 
+## v0.6.16 – Auto-Size für sämtliche Tabellenspalten (14.10.2026)
+- Alle Tabellenspalten werden beim Anzeigen inhaltsabhängig dimensioniert – **einschliesslich der jeweils letzten Spalte**.
+- Einheitliche Spaltenbreiten in Dashboard, Snapshots, Crawl-Diagnose, Dokumentenlisten, Fundstellen und beiden Sitemap-Ansichten.
+- Bis zu 400 repräsentative Zeilen werden für die Breitenberechnung ausgewertet; längere URLs und Texte bleiben durch eine Maximalbreite bedienbar.
+- Interaktive Spalten (Checkboxen, Links, Baumansicht) behalten ihre jeweilige Funktion.
+- Auch der **Sitemap-Excel-Export** erhält dynamisch berechnete statt fester Spaltenbreiten.
+- Regressionstests prüfen alle Tabellenaufrufe, grosse Tabellen, lange URLs, letzte Spalten und XLSX-Spaltenbreiten.
+
+[Vollständige Release-Notizen](docs/releases/v0.6.16.md)
+
 ## v0.6.15 – Snapshot-Auswahl mit Symbol, Datum und ID (14.10.2026)
 - Unterschiedliche Icons für **📦 Full** und **🧩 Partial** in der Snapshot-Auswahl und im Snapshot-Typ.
 - Alle Snapshot-Dropdowns verwenden `Symbol - YYYY.MM.DD HH:MM:SS - ID`, auch bei älteren gespeicherten Snapshots.
